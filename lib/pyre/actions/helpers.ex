@@ -24,16 +24,44 @@ defmodule Pyre.Actions.Helpers do
 
   @doc """
   Calls the LLM via the module in context, respecting streaming preference.
+
+  When `tools:` option is provided, delegates to the agentic loop for
+  multi-turn tool-use conversations.
   """
-  def call_llm(context, model, messages) do
+  def call_llm(context, model, messages, opts \\ []) do
     llm = Map.get(context, :llm, Pyre.LLM)
     streaming? = Map.get(context, :streaming, true)
+    tools = Keyword.get(opts, :tools, [])
 
-    if streaming? do
+    if tools != [] do
       output_fn = Map.get(context, :output_fn, &IO.write/1)
-      llm.stream(model, messages, output_fn: output_fn)
+      verbose? = Map.get(context, :verbose, false)
+
+      Pyre.Tools.AgenticLoop.run(llm, model, messages, tools,
+        streaming: streaming?,
+        output_fn: output_fn,
+        verbose: verbose?
+      )
     else
-      llm.generate(model, messages, [])
+      if streaming? do
+        output_fn = Map.get(context, :output_fn, &IO.write/1)
+        llm.stream(model, messages, output_fn: output_fn)
+      else
+        llm.generate(model, messages, [])
+      end
+    end
+  end
+
+  @doc """
+  Builds tool options from the flow context.
+
+  Extracts `:allowed_commands` when present, returning a keyword list
+  suitable for passing to `Pyre.Tools.for_role/3`.
+  """
+  def tool_opts(context) do
+    case Map.get(context, :allowed_commands) do
+      nil -> []
+      commands -> [allowed_commands: commands]
     end
   end
 

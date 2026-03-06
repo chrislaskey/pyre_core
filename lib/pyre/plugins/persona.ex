@@ -51,7 +51,7 @@ defmodule Pyre.Plugins.Persona do
     sections =
       sections ++
         [
-          "## Output Instructions\n\nWrite your output to: `#{output_path}`\n\nUse the Write tool to create this file. The file should be a Markdown document following the format specified in your persona instructions."
+          "## Output Instructions\n\nAfter completing your work, write a summary to: `#{output_path}`\n\nThe summary should be a Markdown document following the format specified in your persona instructions."
         ]
 
     %{role: :user, content: Enum.join(sections, "\n\n")}

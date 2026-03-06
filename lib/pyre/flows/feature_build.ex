@@ -55,7 +55,9 @@ defmodule Pyre.Flows.FeatureBuild do
       output_fn: Keyword.get(opts, :output_fn, &IO.write/1),
       model_override: if(fast?, do: "anthropic:claude-haiku-4-5"),
       verbose: verbose?,
-      dry_run: Keyword.get(opts, :dry_run, false)
+      dry_run: Keyword.get(opts, :dry_run, false),
+      working_dir: working_dir,
+      allowed_commands: Keyword.get(opts, :allowed_commands)
     }
 
     with {:ok, run_dir} <- Artifact.create_run_dir(runs_dir),

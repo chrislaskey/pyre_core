@@ -54,7 +54,11 @@ defmodule Pyre.Actions.Programmer do
           "#{artifact_name}.md"
         )
 
-      case Helpers.call_llm(context, model, [system_msg, user_msg]) do
+      working_dir = Map.get(context, :working_dir, ".")
+      tool_opts = Helpers.tool_opts(context)
+      tools = Pyre.Tools.for_role(:programmer, working_dir, tool_opts)
+
+      case Helpers.call_llm(context, model, [system_msg, user_msg], tools: tools) do
         {:ok, text} ->
           :ok = Artifact.write(params.run_dir, artifact_name, text)
           {:ok, %{implementation: text}}

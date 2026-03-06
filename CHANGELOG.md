@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.3.0 — Tool use (agents can modify files)
+
+Agents now use LLM tool calling to read, write, and execute commands in the target project. The Programmer, TestWriter, and QAReviewer actions have real tools — they actually create files, run generators, and verify compilation instead of just describing what they would do.
+
+### Added
+
+- **Tool definitions** (`Pyre.Tools`) — Four tools (`read_file`, `write_file`, `list_directory`, `run_command`) with path sandboxing and command allowlisting.
+- **Agentic loop** (`Pyre.Tools.AgenticLoop`) — Multi-turn tool-use conversation loop. Calls the LLM, executes tool calls, feeds results back, and repeats until the LLM produces a final answer (max 25 iterations).
+- **`Pyre.LLM.chat/4`** — New callback that returns the full `ReqLLM.Response` struct (tool_calls, finish_reason, context) for tool-use workflows. Existing `generate/3` and `stream/3` are unchanged.
+
+### Changed
+
+- **Programmer, TestWriter, QAReviewer** now receive tools and can modify the project directly via the API's function calling feature.
+- **ProductManager and Designer** are unchanged — they produce text artifacts only.
+- **Persona files** updated to describe available tools instead of XML-style tags.
+- `Pyre.LLM.Mock.chat/4` returns a mock `ReqLLM.Response` with `finish_reason: :stop`, so existing tests work without tool execution.
+
 ## v0.2.0 — Use Jido for orchestration
 
 Replaced the original orchestrator with a modular architecture built on [Jido](https://jido.run/).
