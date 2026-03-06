@@ -8,6 +8,7 @@ defmodule Pyre.Tools.AgenticLoop do
   """
 
   @max_iterations 25
+  @default_receive_timeout 300_000
 
   @doc """
   Runs the agentic loop until the LLM produces a final answer.
@@ -20,6 +21,7 @@ defmodule Pyre.Tools.AgenticLoop do
     * `:output_fn` - Token callback for streaming. Default `&IO.write/1`.
     * `:max_iterations` - Max tool-use turns. Default `25`.
     * `:verbose` - Log tool calls. Default `false`.
+    * `:receive_timeout` - Per-chunk timeout in ms. Default `300_000` (5 min).
   """
   @spec run(module(), String.t(), [map()], [ReqLLM.Tool.t()], keyword()) ::
           {:ok, String.t()} | {:error, term()}
@@ -28,8 +30,9 @@ defmodule Pyre.Tools.AgenticLoop do
     streaming? = Keyword.get(opts, :streaming, false)
     output_fn = Keyword.get(opts, :output_fn, &IO.write/1)
     verbose? = Keyword.get(opts, :verbose, false)
+    receive_timeout = Keyword.get(opts, :receive_timeout, @default_receive_timeout)
 
-    loop(llm_module, model, messages, tools, 0, max_iter, streaming?, output_fn, verbose?, "")
+    loop(llm_module, model, messages, tools, 0, max_iter, streaming?, output_fn, verbose?, receive_timeout, "")
   end
 
   defp loop(
@@ -42,6 +45,7 @@ defmodule Pyre.Tools.AgenticLoop do
          _streaming?,
          _output_fn,
          _verbose?,
+         _receive_timeout,
          accumulated
        )
        when iteration >= max_iter do
@@ -58,9 +62,14 @@ defmodule Pyre.Tools.AgenticLoop do
          streaming?,
          output_fn,
          verbose?,
+         receive_timeout,
          accumulated
        ) do
-    chat_opts = [streaming: streaming?, output_fn: output_fn]
+    chat_opts = [
+      streaming: streaming?,
+      output_fn: output_fn,
+      receive_timeout: receive_timeout
+    ]
 
     case llm_module.chat(model, messages, tools, chat_opts) do
       {:ok, response} ->
@@ -77,6 +86,7 @@ defmodule Pyre.Tools.AgenticLoop do
           streaming?,
           output_fn,
           verbose?,
+          receive_timeout,
           accumulated
         )
 
@@ -96,6 +106,7 @@ defmodule Pyre.Tools.AgenticLoop do
          _streaming?,
          _output_fn,
          _verbose?,
+         _receive_timeout,
          accumulated
        ) do
     {:ok, accumulated <> text}
@@ -112,6 +123,7 @@ defmodule Pyre.Tools.AgenticLoop do
          streaming?,
          output_fn,
          verbose?,
+         receive_timeout,
          accumulated
        ) do
     if verbose?, do: log_tool_calls(tool_calls, iteration)
@@ -131,6 +143,7 @@ defmodule Pyre.Tools.AgenticLoop do
       streaming?,
       output_fn,
       verbose?,
+      receive_timeout,
       accumulated <> text
     )
   end
