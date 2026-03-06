@@ -56,14 +56,19 @@ defmodule Mix.Tasks.Pyre.Install do
   end
 
   defp append_gitignore(igniter) do
-    Igniter.create_or_update_file(igniter, ".gitignore", String.trim(@gitignore_entries), fn source ->
-      content = Rewrite.Source.get(source, :content)
+    Igniter.create_or_update_file(
+      igniter,
+      ".gitignore",
+      String.trim(@gitignore_entries),
+      fn source ->
+        content = Rewrite.Source.get(source, :content)
 
-      if String.contains?(content, "/priv/pyre/runs/*") do
-        source
-      else
-        Rewrite.Source.update(source, :content, content <> @gitignore_entries)
+        if String.contains?(content, "/priv/pyre/runs/*") do
+          source
+        else
+          Rewrite.Source.update(source, :content, content <> @gitignore_entries)
+        end
       end
-    end)
+    )
   end
 end

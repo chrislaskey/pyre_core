@@ -1,4 +1,4 @@
-defmodule Pyre.Agents.Artifact do
+defmodule Pyre.Plugins.Artifact do
   @moduledoc """
   Filesystem operations for agent run artifacts.
 
@@ -49,7 +49,7 @@ defmodule Pyre.Agents.Artifact do
   Finds the latest version of an artifact by base name.
 
   Given a base name like `"03_implementation_summary"`, finds the highest versioned
-  file (e.g., `03_implementation_summary_v3.md` > `03_implementation_summary_v2.md` > `03_implementation_summary.md`).
+  file (e.g., `03_implementation_summary_v3.md` > `03_implementation_summary_v2.md`).
 
   Returns `{:ok, filename, content}` or `{:error, :not_found}`.
   """
@@ -103,17 +103,6 @@ defmodule Pyre.Agents.Artifact do
   Returns a versioned artifact name.
 
   Cycle 1 returns the base name unchanged. Cycle 2+ appends `_vN`.
-
-  ## Examples
-
-      iex> Pyre.Agents.Artifact.versioned_name("03_implementation_summary", 1)
-      "03_implementation_summary"
-
-      iex> Pyre.Agents.Artifact.versioned_name("03_implementation_summary", 2)
-      "03_implementation_summary_v2"
-
-      iex> Pyre.Agents.Artifact.versioned_name("03_implementation_summary", 3)
-      "03_implementation_summary_v3"
   """
   @spec versioned_name(String.t(), pos_integer()) :: String.t()
   def versioned_name(base_name, 1), do: base_name

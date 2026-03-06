@@ -1,7 +1,7 @@
 defmodule Pyre.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.2.0"
   @source_url "https://github.com/chrislaskey/pyre"
 
   def project do
@@ -20,6 +20,7 @@ defmodule Pyre.MixProject do
 
   def application do
     [
+      mod: {Pyre.Application, []},
       extra_applications: [:logger]
     ]
   end
@@ -47,7 +48,9 @@ defmodule Pyre.MixProject do
   defp deps do
     [
       {:inflex, "~> 2.1"},
-      {:igniter, "~> 0.7"}
+      {:igniter, "~> 0.7"},
+      {:jido, "~> 2.0"},
+      {:jido_ai, "~> 2.0.0-rc.0"}
     ]
   end
 end
