@@ -49,9 +49,12 @@ defmodule Pyre.Tools.AgenticLoop do
   end
 
   defp loop(llm_module, model, messages, tools, iteration, config, accumulated) do
+    # Force non-streaming for tool-use chat calls. ReqLLM's streaming path has
+    # a bug where large tool call arguments (e.g. write_file content) arrive
+    # with empty args due to broken input_json_delta fragment accumulation.
+    # Non-streaming returns complete JSON arguments in a single response.
     chat_opts = [
-      streaming: config.streaming,
-      output_fn: config.output_fn,
+      streaming: false,
       receive_timeout: config.receive_timeout
     ]
 
@@ -66,11 +69,15 @@ defmodule Pyre.Tools.AgenticLoop do
     end
   end
 
-  defp handle_classified(%{type: :final_answer, text: text}, _response, _llm, _model, _tools, _iteration, _config, accumulated) do
+  defp handle_classified(%{type: :final_answer, text: text}, _response, _llm, _model, _tools, _iteration, config, accumulated) do
+    # Emit final text for display since we're not streaming
+    if text != "", do: config.output_fn.(text)
     {:ok, accumulated <> text}
   end
 
   defp handle_classified(%{type: :tool_calls, text: text, tool_calls: tool_calls}, response, llm_module, model, tools, iteration, config, accumulated) do
+    # Emit inter-turn text for display since we're not streaming
+    if text != "", do: config.output_fn.(text)
     log_tool_calls(tool_calls, iteration, config.verbose)
 
     updated_context = execute_tools(response.context, tool_calls, tools, config.verbose)
