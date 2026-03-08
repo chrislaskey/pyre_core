@@ -212,8 +212,12 @@ defmodule Pyre.Tools.AgenticLoop do
       arg_keys = if is_map(args), do: Map.keys(args), else: []
       empty? = args == %{} or args == nil
 
-      # Always log tool call name and whether args are present
-      config.log_fn.("[tool #{iteration + 1}] #{name}(#{format_arg_summary(arg_keys, empty?)})")
+      # Append key arg inline for common tools
+      suffix = tool_log_suffix(name, args)
+
+      config.log_fn.(
+        "[tool #{iteration + 1}] #{name}(#{format_arg_summary(arg_keys, empty?)})#{suffix}"
+      )
 
       # With verbose, log full argument details
       if config.verbose and not empty? do
@@ -231,6 +235,21 @@ defmodule Pyre.Tools.AgenticLoop do
 
   defp format_arg_summary(_keys, true), do: "EMPTY ARGS"
   defp format_arg_summary(keys, false), do: Enum.join(keys, ", ")
+
+  defp tool_log_suffix(name, args) when is_map(args) do
+    value =
+      case name do
+        "run_command" -> Map.get(args, "command")
+        "list_directory" -> Map.get(args, "path")
+        "read_file" -> Map.get(args, "path")
+        "write_file" -> Map.get(args, "path")
+        _ -> nil
+      end
+
+    if value, do: ": #{value}", else: ""
+  end
+
+  defp tool_log_suffix(_name, _args), do: ""
 
   defp log_tool_result(name, :ok, value, log_fn) when is_binary(value) do
     display = if byte_size(value) > 200, do: "#{String.slice(value, 0, 200)}...", else: value

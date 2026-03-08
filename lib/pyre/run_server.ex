@@ -61,6 +61,41 @@ defmodule Pyre.RunServer do
   end
 
   @doc """
+  Returns the set of skipped stages for a run.
+  """
+  @spec get_skipped_stages(run_id()) :: {:ok, MapSet.t()} | {:error, :not_found}
+  def get_skipped_stages(id) do
+    case lookup(id) do
+      {:ok, pid} -> {:ok, GenServer.call(pid, :get_skipped_stages)}
+      error -> error
+    end
+  end
+
+  @doc """
+  Toggles a stage on or off. If the stage is currently skipped, it becomes
+  enabled; if enabled, it becomes skipped. Broadcasts the updated set.
+  """
+  @spec toggle_stage(run_id(), atom()) :: :ok | {:error, :not_found}
+  def toggle_stage(id, stage) do
+    case lookup(id) do
+      {:ok, pid} -> GenServer.call(pid, {:toggle_stage, stage})
+      error -> error
+    end
+  end
+
+  @doc """
+  Stops a running pipeline. Kills the flow task and marks the run as stopped.
+  Returns `:ok` or `{:error, :not_found}`.
+  """
+  @spec stop_run(run_id()) :: :ok | {:error, :not_found | :not_running}
+  def stop_run(id) do
+    case lookup(id) do
+      {:ok, pid} -> GenServer.call(pid, :stop_run)
+      error -> error
+    end
+  end
+
+  @doc """
   Lists all active runs with summary metadata.
   """
   @spec list_runs() :: [map()]
@@ -92,6 +127,11 @@ defmodule Pyre.RunServer do
   def init({id, feature_description, opts}) do
     now = DateTime.utc_now()
 
+    skipped =
+      opts
+      |> Keyword.get(:skipped_stages, [])
+      |> MapSet.new()
+
     state = %{
       id: id,
       status: :running,
@@ -100,6 +140,7 @@ defmodule Pyre.RunServer do
       log: [],
       started_at: now,
       completed_at: nil,
+      skipped_stages: skipped,
       opts: opts
     }
 
@@ -118,13 +159,16 @@ defmodule Pyre.RunServer do
       |> Keyword.put(:log_fn, fn msg -> GenServer.cast(server, {:log, msg}) end)
       |> Keyword.put(:output_fn, fn chunk -> GenServer.cast(server, {:output, chunk}) end)
       |> Keyword.put(:streaming, Keyword.get(state.opts, :streaming, true))
+      |> Keyword.put(:skip_check_fn, fn phase ->
+        GenServer.call(server, {:stage_skipped?, phase})
+      end)
 
     task =
       Task.Supervisor.async_nolink(Jido.Action.TaskSupervisor, fn ->
         Pyre.Flows.FeatureBuild.run(state.feature_description, flow_opts)
       end)
 
-    {:noreply, Map.put(state, :task_ref, task.ref)}
+    {:noreply, state |> Map.put(:task_ref, task.ref) |> Map.put(:task_pid, task.pid)}
   end
 
   @impl true
@@ -149,12 +193,60 @@ defmodule Pyre.RunServer do
 
   @impl true
   def handle_call(:get_state, _from, state) do
-    reply = Map.drop(state, [:opts, :task_ref])
+    reply = Map.drop(state, [:opts, :task_ref, :task_pid])
     {:reply, reply, state}
   end
 
   def handle_call(:get_log, _from, state) do
     {:reply, state.log, state}
+  end
+
+  def handle_call(:get_skipped_stages, _from, state) do
+    {:reply, state.skipped_stages, state}
+  end
+
+  def handle_call({:toggle_stage, stage}, _from, state) do
+    skipped =
+      if MapSet.member?(state.skipped_stages, stage) do
+        MapSet.delete(state.skipped_stages, stage)
+      else
+        MapSet.put(state.skipped_stages, stage)
+      end
+
+    state = %{state | skipped_stages: skipped}
+    broadcast_skipped_stages(state.id, skipped)
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:stage_skipped?, phase}, _from, state) do
+    {:reply, MapSet.member?(state.skipped_stages, phase), state}
+  end
+
+  def handle_call(:stop_run, _from, %{status: :running, task_pid: pid, task_ref: ref} = state)
+      when not is_nil(pid) do
+    Process.demonitor(ref, [:flush])
+    Task.Supervisor.terminate_child(Jido.Action.TaskSupervisor, pid)
+
+    entry = make_entry(:log, "Pipeline stopped by user.")
+
+    state =
+      state
+      |> append_entry(entry)
+      |> Map.merge(%{
+        status: :stopped,
+        completed_at: DateTime.utc_now(),
+        task_ref: nil,
+        task_pid: nil
+      })
+
+    broadcast_event(state.id, entry)
+    broadcast_status(state.id, :stopped)
+    update_registry_meta(state)
+    {:reply, :ok, state}
+  end
+
+  def handle_call(:stop_run, _from, state) do
+    {:reply, {:error, :not_running}, state}
   end
 
   @impl true
@@ -173,7 +265,12 @@ defmodule Pyre.RunServer do
     state =
       state
       |> append_entry(entry)
-      |> Map.merge(%{status: status, completed_at: DateTime.utc_now(), task_ref: nil})
+      |> Map.merge(%{
+        status: status,
+        completed_at: DateTime.utc_now(),
+        task_ref: nil,
+        task_pid: nil
+      })
 
     broadcast_event(state.id, entry)
     broadcast_status(state.id, status)
@@ -188,7 +285,12 @@ defmodule Pyre.RunServer do
     state =
       state
       |> append_entry(entry)
-      |> Map.merge(%{status: :error, completed_at: DateTime.utc_now(), task_ref: nil})
+      |> Map.merge(%{
+        status: :error,
+        completed_at: DateTime.utc_now(),
+        task_ref: nil,
+        task_pid: nil
+      })
 
     broadcast_event(state.id, entry)
     broadcast_status(state.id, :error)
@@ -231,13 +333,21 @@ defmodule Pyre.RunServer do
   end
 
   defp maybe_update_phase(state, message) do
-    cond do
-      message =~ ~r/Stage: product_manager/ -> %{state | phase: :planning}
-      message =~ ~r/Stage: designer/ -> %{state | phase: :designing}
-      message =~ ~r/Stage: programmer/ -> %{state | phase: :implementing}
-      message =~ ~r/Stage: test_writer/ -> %{state | phase: :testing}
-      message =~ ~r/Stage: code_reviewer/ -> %{state | phase: :reviewing}
-      true -> state
+    new_phase =
+      cond do
+        message =~ ~r/Stage: product_manager/ -> :planning
+        message =~ ~r/Stage: designer/ -> :designing
+        message =~ ~r/Stage: programmer/ -> :implementing
+        message =~ ~r/Stage: test_writer/ -> :testing
+        message =~ ~r/Stage: code_reviewer/ -> :reviewing
+        true -> nil
+      end
+
+    if new_phase && new_phase != state.phase do
+      broadcast_phase(state.id, new_phase)
+      %{state | phase: new_phase}
+    else
+      state
     end
   end
 
@@ -267,6 +377,22 @@ defmodule Pyre.RunServer do
     if ps = pubsub() do
       Phoenix.PubSub.broadcast(ps, "pyre:runs:#{id}", {:pyre_run_status, id, status})
       Phoenix.PubSub.broadcast(ps, "pyre:runs", {:pyre_run_status, id, status})
+    end
+  end
+
+  defp broadcast_phase(id, phase) do
+    if ps = pubsub() do
+      Phoenix.PubSub.broadcast(ps, "pyre:runs:#{id}", {:pyre_run_phase, id, phase})
+    end
+  end
+
+  defp broadcast_skipped_stages(id, skipped_stages) do
+    if ps = pubsub() do
+      Phoenix.PubSub.broadcast(
+        ps,
+        "pyre:runs:#{id}",
+        {:pyre_run_skipped_stages, id, skipped_stages}
+      )
     end
   end
 end

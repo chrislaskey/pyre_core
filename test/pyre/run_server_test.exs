@@ -198,6 +198,59 @@ defmodule Pyre.RunServerTest do
     assert Enum.any?(contents, &(&1 == "Pipeline complete."))
   end
 
+  test "skipped stages use best practices fallback", %{tmp_dir: tmp_dir} do
+    # Only need 3 mock responses: product_manager, programmer, test_writer
+    # designer and code_reviewer are skipped
+    AgentMock.setup(["Req.", "Impl.", "Tests."])
+
+    {:ok, id} =
+      Pyre.RunServer.start_run("Build a page",
+        llm: AgentMock,
+        streaming: false,
+        project_dir: tmp_dir,
+        skipped_stages: [:designing, :reviewing]
+      )
+
+    wait_for_status(id, :complete)
+
+    {:ok, state} = Pyre.RunServer.get_state(id)
+    assert state.status == :complete
+    assert MapSet.member?(state.skipped_stages, :designing)
+    assert MapSet.member?(state.skipped_stages, :reviewing)
+
+    {:ok, log} = Pyre.RunServer.get_log(id)
+    contents = Enum.map(log, & &1.content)
+    assert Enum.any?(contents, &String.contains?(&1, "Skipping: designer"))
+    assert Enum.any?(contents, &String.contains?(&1, "Skipping: code_reviewer"))
+  end
+
+  test "toggle_stage/2 adds and removes stages", %{tmp_dir: tmp_dir} do
+    AgentMock.setup(["Req.", "Design.", "Impl.", "Tests.", "APPROVE\n\nGood."])
+
+    {:ok, id} =
+      Pyre.RunServer.start_run("Build a page",
+        llm: AgentMock,
+        streaming: false,
+        project_dir: tmp_dir
+      )
+
+    # Initially no skipped stages
+    {:ok, skipped} = Pyre.RunServer.get_skipped_stages(id)
+    assert MapSet.size(skipped) == 0
+
+    # Toggle designing off
+    :ok = Pyre.RunServer.toggle_stage(id, :designing)
+    {:ok, skipped} = Pyre.RunServer.get_skipped_stages(id)
+    assert MapSet.member?(skipped, :designing)
+
+    # Toggle designing back on
+    :ok = Pyre.RunServer.toggle_stage(id, :designing)
+    {:ok, skipped} = Pyre.RunServer.get_skipped_stages(id)
+    refute MapSet.member?(skipped, :designing)
+
+    wait_for_status(id, :complete)
+  end
+
   test "get_state/1 returns {:error, :not_found} for unknown ID" do
     assert {:error, :not_found} = Pyre.RunServer.get_state("deadbeef")
   end

@@ -59,7 +59,8 @@ defmodule Pyre.Flows.FeatureBuild do
       verbose: verbose?,
       dry_run: Keyword.get(opts, :dry_run, false),
       working_dir: working_dir,
-      allowed_commands: Keyword.get(opts, :allowed_commands)
+      allowed_commands: Keyword.get(opts, :allowed_commands),
+      skip_check_fn: Keyword.get(opts, :skip_check_fn)
     }
 
     with {:ok, run_dir} <- Artifact.create_run_dir(runs_dir),
@@ -201,34 +202,89 @@ defmodule Pyre.Flows.FeatureBuild do
     |> drive(context)
   end
 
+  @stage_to_phase %{
+    product_manager: :planning,
+    designer: :designing,
+    programmer: :implementing,
+    test_writer: :testing,
+    code_reviewer: :reviewing
+  }
+
+  @stage_fallback_field %{
+    product_manager: :requirements,
+    designer: :design,
+    programmer: :implementation,
+    test_writer: :tests,
+    code_reviewer: {:verdict, :verdict_text}
+  }
+
+  @stage_model_tier %{
+    product_manager: :standard,
+    designer: :standard,
+    programmer: :advanced,
+    test_writer: :standard,
+    code_reviewer: :advanced
+  }
+
   defp run_action(action_module, stage_name, _state, context, params) do
-    if context.dry_run do
-      context.log_fn.("[dry-run] Would run #{stage_name}")
-      {:ok, %{}}
+    if stage_skipped?(stage_name, context) do
+      context.log_fn.("\n--- Skipping: #{stage_name} (disabled) ---")
+      fallback = Pyre.Plugins.BestPractices.fallback_text(stage_name)
+      {:ok, fallback_result(stage_name, fallback)}
     else
-      started_at = System.monotonic_time(:second)
-      timestamp = Calendar.strftime(NaiveDateTime.local_now(), "%H:%M:%S")
-      context.log_fn.("\n--- Stage: #{stage_name} [#{timestamp}] ---")
+      if context.dry_run do
+        context.log_fn.("[dry-run] Would run #{stage_name}")
+        {:ok, %{}}
+      else
+        started_at = System.monotonic_time(:second)
+        timestamp = Calendar.strftime(NaiveDateTime.local_now(), "%H:%M:%S")
+        tier = Map.get(@stage_model_tier, stage_name, :standard)
+        model = Pyre.Actions.Helpers.resolve_model(tier, context)
+        model_label = model_short_name(model)
+        context.log_fn.("\n--- Stage: #{stage_name} [#{timestamp}] (#{model_label}) ---")
 
-      if context.verbose do
-        context.log_fn.("[verbose] action: #{inspect(action_module)}")
-        context.log_fn.("[verbose] run_dir: #{params.run_dir}")
+        if context.verbose do
+          context.log_fn.("[verbose] action: #{inspect(action_module)}")
+          context.log_fn.("[verbose] run_dir: #{params.run_dir}")
+        end
+
+        result = action_module.run(params, context)
+
+        elapsed = System.monotonic_time(:second) - started_at
+
+        case result do
+          {:ok, _} ->
+            context.log_fn.(
+              "--- Completed: #{stage_name} (#{format_duration(elapsed)}, #{model_label}) ---"
+            )
+
+          {:error, _} ->
+            context.log_fn.(
+              "--- Failed: #{stage_name} (#{format_duration(elapsed)}, #{model_label}) ---"
+            )
+        end
+
+        result
       end
-
-      result = action_module.run(params, context)
-
-      elapsed = System.monotonic_time(:second) - started_at
-
-      case result do
-        {:ok, _} ->
-          context.log_fn.("--- Completed: #{stage_name} (#{format_duration(elapsed)}) ---")
-
-        {:error, _} ->
-          context.log_fn.("--- Failed: #{stage_name} (#{format_duration(elapsed)}) ---")
-      end
-
-      result
     end
+  end
+
+  defp stage_skipped?(stage_name, context) do
+    phase = Map.get(@stage_to_phase, stage_name)
+
+    case Map.get(context, :skip_check_fn) do
+      nil -> false
+      check_fn when is_function(check_fn) -> check_fn.(phase)
+    end
+  end
+
+  defp fallback_result(:code_reviewer, text) do
+    %{verdict: :approve, verdict_text: text}
+  end
+
+  defp fallback_result(stage_name, text) do
+    field = Map.fetch!(@stage_fallback_field, stage_name)
+    %{field => text}
   end
 
   defp advance_phase(state, next_phase) do
@@ -240,6 +296,13 @@ defmodule Pyre.Flows.FeatureBuild do
     else
       raise "Invalid phase transition: #{current} -> #{next_phase}"
     end
+  end
+
+  defp model_short_name(model) when is_binary(model) do
+    # "anthropic:claude-sonnet-4-20250514" → "claude-sonnet-4"
+    model
+    |> String.replace(~r/^[^:]+:/, "")
+    |> String.replace(~r/-\d{8}$/, "")
   end
 
   defp format_duration(seconds) when seconds < 60, do: "#{seconds}s"
