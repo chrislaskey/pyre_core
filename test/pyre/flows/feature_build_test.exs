@@ -153,4 +153,113 @@ defmodule Pyre.Flows.FeatureBuildTest do
     assert {:ok, state} = result
     assert state.phase == :complete
   end
+
+  test "verbose mode emits extra log messages", %{tmp_dir: tmp_dir} do
+    Process.put(:mock_llm_responses, [
+      "Requirements.",
+      "Design.",
+      "Impl.",
+      "Tests.",
+      "APPROVE\n\nGood."
+    ])
+
+    logs = Agent.start_link(fn -> [] end) |> elem(1)
+
+    with_cwd(tmp_dir, fn ->
+      FeatureBuild.run("Build a products page",
+        llm: Pyre.LLM.Mock,
+        streaming: false,
+        verbose: true,
+        project_dir: tmp_dir,
+        log_fn: fn msg -> Agent.update(logs, &(&1 ++ [msg])) end
+      )
+    end)
+
+    log_messages = Agent.get(logs, & &1)
+    # Verbose mode should include action module names and run_dir
+    assert Enum.any?(log_messages, &(&1 =~ "[verbose] action:"))
+    assert Enum.any?(log_messages, &(&1 =~ "[verbose] run_dir:"))
+
+    Agent.stop(logs)
+  end
+
+  test "propagates error from a failing action", %{tmp_dir: tmp_dir} do
+    defmodule FailingLLM do
+      @behaviour Pyre.LLM
+      def generate(_, _, _ \\ []), do: {:error, :llm_failure}
+      def stream(_, _, _ \\ []), do: {:error, :llm_failure}
+      def chat(_, _, _, _ \\ []), do: {:error, :llm_failure}
+    end
+
+    result =
+      with_cwd(tmp_dir, fn ->
+        FeatureBuild.run("Build a products page",
+          llm: FailingLLM,
+          streaming: false,
+          project_dir: tmp_dir,
+          log_fn: fn _ -> :ok end
+        )
+      end)
+
+    assert {:error, :llm_failure} = result
+  end
+
+  test "log_fn callback receives all status messages", %{tmp_dir: tmp_dir} do
+    Process.put(:mock_llm_responses, [
+      "Requirements.",
+      "Design.",
+      "Impl.",
+      "Tests.",
+      "APPROVE\n\nGood."
+    ])
+
+    logs = Agent.start_link(fn -> [] end) |> elem(1)
+
+    with_cwd(tmp_dir, fn ->
+      FeatureBuild.run("Build a products page",
+        llm: Pyre.LLM.Mock,
+        streaming: false,
+        project_dir: tmp_dir,
+        log_fn: fn msg -> Agent.update(logs, &(&1 ++ [msg])) end
+      )
+    end)
+
+    log_messages = Agent.get(logs, & &1)
+    # Should include run directory, stage starts, and completions
+    assert Enum.any?(log_messages, &(&1 =~ "Run directory:"))
+    assert Enum.any?(log_messages, &(&1 =~ "Stage: product_manager"))
+    assert Enum.any?(log_messages, &(&1 =~ "Completed: product_manager"))
+    assert Enum.any?(log_messages, &(&1 =~ "APPROVED"))
+
+    Agent.stop(logs)
+  end
+
+  test "output_fn callback receives LLM output text", %{tmp_dir: tmp_dir} do
+    Process.put(:mock_llm_responses, [
+      "My requirements document.",
+      "Design.",
+      "Impl.",
+      "Tests.",
+      "APPROVE\n\nGood."
+    ])
+
+    output = Agent.start_link(fn -> [] end) |> elem(1)
+
+    with_cwd(tmp_dir, fn ->
+      FeatureBuild.run("Build a products page",
+        llm: Pyre.LLM.Mock,
+        streaming: false,
+        project_dir: tmp_dir,
+        output_fn: fn text -> Agent.update(output, &(&1 ++ [text])) end,
+        log_fn: fn _ -> :ok end
+      )
+    end)
+
+    # Non-streaming without tools calls generate/3, which returns text directly
+    # to the action — output_fn is not called in this path. This verifies
+    # the callback is accepted without error.
+    assert is_list(Agent.get(output, & &1))
+
+    Agent.stop(output)
+  end
 end

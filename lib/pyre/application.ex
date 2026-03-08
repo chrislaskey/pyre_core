@@ -4,7 +4,10 @@ defmodule Pyre.Application do
 
   @impl true
   def start(_type, _args) do
-    children = []
+    children = [
+      {Registry, keys: :unique, name: Pyre.RunRegistry},
+      {DynamicSupervisor, name: Pyre.RunSupervisor, strategy: :one_for_one}
+    ]
 
     opts = [strategy: :one_for_one, name: Pyre.Supervisor]
     Supervisor.start_link(children, opts)

@@ -20,6 +20,7 @@ defmodule Pyre.Tools.AgenticLoop do
     * `:streaming` - Stream tokens via `output_fn`. Default `false`.
     * `:output_fn` - Token callback for streaming. Default `&IO.write/1`.
     * `:max_iterations` - Max tool-use turns. Default `25`.
+    * `:log_fn` - Function for status/progress messages. Default `&IO.puts/1`.
     * `:verbose` - Log tool calls. Default `false`.
     * `:receive_timeout` - Per-chunk timeout in ms. Default `300_000` (5 min).
   """
@@ -29,6 +30,7 @@ defmodule Pyre.Tools.AgenticLoop do
     max_iter = Keyword.get(opts, :max_iterations, @max_iterations)
     streaming? = Keyword.get(opts, :streaming, false)
     output_fn = Keyword.get(opts, :output_fn, &IO.write/1)
+    log_fn = Keyword.get(opts, :log_fn, &IO.puts/1)
     verbose? = Keyword.get(opts, :verbose, false)
     receive_timeout = Keyword.get(opts, :receive_timeout, @default_receive_timeout)
 
@@ -36,6 +38,7 @@ defmodule Pyre.Tools.AgenticLoop do
       max_iter: max_iter,
       streaming: streaming?,
       output_fn: output_fn,
+      log_fn: log_fn,
       verbose: verbose?,
       receive_timeout: receive_timeout
     }
@@ -62,32 +65,59 @@ defmodule Pyre.Tools.AgenticLoop do
       {:ok, response} ->
         classified = ReqLLM.Response.classify(response)
 
-        handle_classified(classified, response, llm_module, model, tools, iteration, config, accumulated)
+        handle_classified(
+          classified,
+          response,
+          llm_module,
+          model,
+          tools,
+          iteration,
+          config,
+          accumulated
+        )
 
       {:error, _} = error ->
         error
     end
   end
 
-  defp handle_classified(%{type: :final_answer, text: text}, _response, _llm, _model, _tools, _iteration, config, accumulated) do
+  defp handle_classified(
+         %{type: :final_answer, text: text},
+         _response,
+         _llm,
+         _model,
+         _tools,
+         _iteration,
+         config,
+         accumulated
+       ) do
     # Emit final text for display since we're not streaming
     if text != "", do: config.output_fn.(text)
     {:ok, accumulated <> text}
   end
 
-  defp handle_classified(%{type: :tool_calls, text: text, tool_calls: tool_calls}, response, llm_module, model, tools, iteration, config, accumulated) do
+  defp handle_classified(
+         %{type: :tool_calls, text: text, tool_calls: tool_calls},
+         response,
+         llm_module,
+         model,
+         tools,
+         iteration,
+         config,
+         accumulated
+       ) do
     # Emit inter-turn text for display since we're not streaming
     if text != "", do: config.output_fn.(text)
-    log_tool_calls(tool_calls, iteration, config.verbose)
+    log_tool_calls(tool_calls, iteration, config)
 
-    updated_context = execute_tools(response.context, tool_calls, tools, config.verbose)
+    updated_context = execute_tools(response.context, tool_calls, tools, config)
 
     loop(llm_module, model, updated_context, tools, iteration + 1, config, accumulated <> text)
   end
 
   # --- Tool Execution ---
 
-  defp execute_tools(context, tool_calls, tools, verbose?) do
+  defp execute_tools(context, tool_calls, tools, config) do
     Enum.reduce(tool_calls, context, fn tool_call, ctx ->
       name = extract_tool_name(tool_call)
       id = extract_tool_id(tool_call)
@@ -96,12 +126,12 @@ defmodule Pyre.Tools.AgenticLoop do
       result =
         case find_and_execute(name, args, tools) do
           {:ok, value} ->
-            if verbose?, do: log_tool_result(name, :ok, value)
+            if config.verbose, do: log_tool_result(name, :ok, value, config.log_fn)
             value
 
           {:error, error} ->
             error_msg = format_tool_error(name, error, tools)
-            Mix.shell().info("[tool error] #{name}: #{error_msg}")
+            config.log_fn.("[tool error] #{name}: #{error_msg}")
             error_msg
         end
 
@@ -175,7 +205,7 @@ defmodule Pyre.Tools.AgenticLoop do
 
   # --- Logging ---
 
-  defp log_tool_calls(tool_calls, iteration, verbose?) do
+  defp log_tool_calls(tool_calls, iteration, config) do
     Enum.each(tool_calls, fn tc ->
       name = extract_tool_name(tc)
       args = extract_tool_args(tc)
@@ -183,13 +213,17 @@ defmodule Pyre.Tools.AgenticLoop do
       empty? = args == %{} or args == nil
 
       # Always log tool call name and whether args are present
-      Mix.shell().info("[tool #{iteration + 1}] #{name}(#{format_arg_summary(arg_keys, empty?)})")
+      config.log_fn.("[tool #{iteration + 1}] #{name}(#{format_arg_summary(arg_keys, empty?)})")
 
       # With verbose, log full argument details
-      if verbose? and not empty? do
+      if config.verbose and not empty? do
         Enum.each(args, fn {k, v} ->
-          display = if is_binary(v) and byte_size(v) > 200, do: "#{String.slice(v, 0, 200)}...(#{byte_size(v)} bytes)", else: inspect(v)
-          Mix.shell().info("[tool #{iteration + 1}]   #{k}: #{display}")
+          display =
+            if is_binary(v) and byte_size(v) > 200,
+              do: "#{String.slice(v, 0, 200)}...(#{byte_size(v)} bytes)",
+              else: inspect(v)
+
+          config.log_fn.("[tool #{iteration + 1}]   #{k}: #{display}")
         end)
       end
     end)
@@ -198,12 +232,12 @@ defmodule Pyre.Tools.AgenticLoop do
   defp format_arg_summary(_keys, true), do: "EMPTY ARGS"
   defp format_arg_summary(keys, false), do: Enum.join(keys, ", ")
 
-  defp log_tool_result(name, :ok, value) when is_binary(value) do
+  defp log_tool_result(name, :ok, value, log_fn) when is_binary(value) do
     display = if byte_size(value) > 200, do: "#{String.slice(value, 0, 200)}...", else: value
-    Mix.shell().info("[tool result] #{name}: #{display}")
+    log_fn.("[tool result] #{name}: #{display}")
   end
 
-  defp log_tool_result(name, :ok, value) do
-    Mix.shell().info("[tool result] #{name}: #{inspect(value, limit: 5)}")
+  defp log_tool_result(name, :ok, value, log_fn) do
+    log_fn.("[tool result] #{name}: #{inspect(value, limit: 5)}")
   end
 end

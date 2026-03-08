@@ -64,7 +64,8 @@ defmodule Mix.Tasks.Pyre.Run do
       dry_run: Keyword.get(opts, :dry_run, false),
       verbose: Keyword.get(opts, :verbose, false),
       project_dir: Keyword.get(opts, :project_dir, "."),
-      streaming: !Keyword.get(opts, :no_stream, false)
+      streaming: !Keyword.get(opts, :no_stream, false),
+      log_fn: fn msg -> Mix.shell().info(msg) end
     ]
 
     case Pyre.Flows.FeatureBuild.run(feature_description, flow_opts) do

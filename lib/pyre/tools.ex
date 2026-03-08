@@ -184,15 +184,16 @@ defmodule Pyre.Tools do
   end
 
   defp validate_command!(command, allowed_commands) do
-    first_word =
-      command
-      |> String.trim()
-      |> String.split(~r/\s+/, parts: 2)
-      |> List.first("")
+    trimmed = String.trim(command)
 
-    unless first_word in allowed_commands do
+    allowed? =
+      Enum.any?(allowed_commands, fn prefix ->
+        trimmed == prefix or String.starts_with?(trimmed, prefix <> " ")
+      end)
+
+    unless allowed? do
       raise ArgumentError,
-            "Command not allowed: #{first_word}. Allowed: #{Enum.join(allowed_commands, ", ")}"
+            "Command not allowed: #{trimmed}. Allowed: #{Enum.join(allowed_commands, ", ")}"
     end
   end
 

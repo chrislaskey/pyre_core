@@ -21,6 +21,7 @@ defmodule Pyre.Flows.FeatureBuild do
     * `:verbose` -- Print diagnostic information. Default `false`.
     * `:project_dir` -- Working directory for the agents. Default `"."`.
     * `:output_fn` -- Function called with each streaming token. Default `&IO.write/1`.
+    * `:log_fn` -- Function called with status/progress messages. Default `&IO.puts/1`.
   """
 
   alias Pyre.Actions.{ProductManager, Designer, Programmer, TestWriter, QAReviewer}
@@ -53,6 +54,7 @@ defmodule Pyre.Flows.FeatureBuild do
       llm: Keyword.get(opts, :llm, Pyre.LLM),
       streaming: streaming?,
       output_fn: Keyword.get(opts, :output_fn, &IO.write/1),
+      log_fn: Keyword.get(opts, :log_fn, &IO.puts/1),
       model_override: if(fast?, do: "anthropic:claude-haiku-4-5"),
       verbose: verbose?,
       dry_run: Keyword.get(opts, :dry_run, false),
@@ -62,7 +64,7 @@ defmodule Pyre.Flows.FeatureBuild do
 
     with {:ok, run_dir} <- Artifact.create_run_dir(runs_dir),
          :ok <- Artifact.write(run_dir, "00_feature", feature_description) do
-      Mix.shell().info("Run directory: #{run_dir}")
+      context.log_fn.("Run directory: #{run_dir}")
 
       state = %{
         phase: :planning,
@@ -175,7 +177,7 @@ defmodule Pyre.Flows.FeatureBuild do
   end
 
   defp handle_verdict(%{verdict: :approve, review_cycle: cycle} = state, context) do
-    Mix.shell().info("Review: APPROVED (cycle #{cycle})")
+    context.log_fn.("Review: APPROVED (cycle #{cycle})")
     state |> advance_phase(:complete) |> drive(context)
   end
 
@@ -186,12 +188,12 @@ defmodule Pyre.Flows.FeatureBuild do
 
   defp handle_verdict(%{verdict: :reject, review_cycle: cycle} = state, context)
        when cycle >= @max_review_cycles do
-    Mix.shell().info("Max review cycles (#{@max_review_cycles}) reached. Stopping.")
+    context.log_fn.("Max review cycles (#{@max_review_cycles}) reached. Stopping.")
     state |> advance_phase(:complete) |> drive(context)
   end
 
   defp handle_verdict(%{verdict: :reject, review_cycle: cycle} = state, context) do
-    Mix.shell().info("Review: REJECTED (cycle #{cycle}), starting rework...")
+    context.log_fn.("Review: REJECTED (cycle #{cycle}), starting rework...")
 
     state
     |> Map.put(:review_cycle, cycle + 1)
@@ -201,16 +203,16 @@ defmodule Pyre.Flows.FeatureBuild do
 
   defp run_action(action_module, stage_name, _state, context, params) do
     if context.dry_run do
-      Mix.shell().info("[dry-run] Would run #{stage_name}")
+      context.log_fn.("[dry-run] Would run #{stage_name}")
       {:ok, %{}}
     else
       started_at = System.monotonic_time(:second)
       timestamp = Calendar.strftime(NaiveDateTime.local_now(), "%H:%M:%S")
-      Mix.shell().info("\n--- Stage: #{stage_name} [#{timestamp}] ---")
+      context.log_fn.("\n--- Stage: #{stage_name} [#{timestamp}] ---")
 
       if context.verbose do
-        Mix.shell().info("[verbose] action: #{inspect(action_module)}")
-        Mix.shell().info("[verbose] run_dir: #{params.run_dir}")
+        context.log_fn.("[verbose] action: #{inspect(action_module)}")
+        context.log_fn.("[verbose] run_dir: #{params.run_dir}")
       end
 
       result = action_module.run(params, context)
@@ -219,10 +221,10 @@ defmodule Pyre.Flows.FeatureBuild do
 
       case result do
         {:ok, _} ->
-          Mix.shell().info("--- Completed: #{stage_name} (#{format_duration(elapsed)}) ---")
+          context.log_fn.("--- Completed: #{stage_name} (#{format_duration(elapsed)}) ---")
 
         {:error, _} ->
-          Mix.shell().info("--- Failed: #{stage_name} (#{format_duration(elapsed)}) ---")
+          context.log_fn.("--- Failed: #{stage_name} (#{format_duration(elapsed)}) ---")
       end
 
       result

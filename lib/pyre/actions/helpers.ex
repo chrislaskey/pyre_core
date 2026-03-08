@@ -35,11 +35,13 @@ defmodule Pyre.Actions.Helpers do
 
     if tools != [] do
       output_fn = Map.get(context, :output_fn, &IO.write/1)
+      log_fn = Map.get(context, :log_fn, &IO.puts/1)
       verbose? = Map.get(context, :verbose, false)
 
       Pyre.Tools.AgenticLoop.run(llm, model, messages, tools,
         streaming: streaming?,
         output_fn: output_fn,
+        log_fn: log_fn,
         verbose: verbose?
       )
     else

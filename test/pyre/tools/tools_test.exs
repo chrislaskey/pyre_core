@@ -104,11 +104,53 @@ defmodule Pyre.ToolsTest do
       assert {:error, _} = ReqLLM.Tool.execute(cmd_tool, %{command: "rm -rf /"})
     end
 
+    test "allows commands with env var prefixes", %{dir: dir} do
+      tools = Tools.for_role(:programmer, dir)
+      cmd_tool = Enum.find(tools, &(&1.name == "run_command"))
+      assert {:ok, _} = ReqLLM.Tool.execute(cmd_tool, %{command: "MIX_ENV=test mix test"})
+    end
+
     test "returns exit code on failure", %{dir: dir} do
       tools = Tools.for_role(:programmer, dir)
       cmd_tool = Enum.find(tools, &(&1.name == "run_command"))
       assert {:ok, output} = ReqLLM.Tool.execute(cmd_tool, %{command: "ls nonexistent_dir_xyz"})
       assert output =~ "Exit code"
+    end
+  end
+
+  describe "for_role/3 with options" do
+    test "custom allowed_commands restricts run_command", %{dir: dir} do
+      tools = Tools.for_role(:programmer, dir, allowed_commands: ~w(echo))
+      cmd_tool = Enum.find(tools, &(&1.name == "run_command"))
+
+      assert {:ok, _} = ReqLLM.Tool.execute(cmd_tool, %{command: "echo hello"})
+      assert {:error, _} = ReqLLM.Tool.execute(cmd_tool, %{command: "ls"})
+    end
+
+    test "custom allowed_commands works for qa_reviewer", %{dir: dir} do
+      tools = Tools.for_role(:qa_reviewer, dir, allowed_commands: ~w(echo))
+      cmd_tool = Enum.find(tools, &(&1.name == "run_command"))
+
+      assert {:ok, _} = ReqLLM.Tool.execute(cmd_tool, %{command: "echo test"})
+      assert {:error, _} = ReqLLM.Tool.execute(cmd_tool, %{command: "cat file"})
+    end
+  end
+
+  describe "default_allowed_commands/0" do
+    test "returns the default command list" do
+      commands = Tools.default_allowed_commands()
+      assert is_list(commands)
+      assert "mix" in commands
+      assert "elixir" in commands
+      assert "cat" in commands
+    end
+  end
+
+  describe "list_directory path traversal" do
+    test "blocks path traversal", %{dir: dir} do
+      tools = Tools.for_role(:programmer, dir)
+      list_tool = Enum.find(tools, &(&1.name == "list_directory"))
+      assert {:error, _} = ReqLLM.Tool.execute(list_tool, %{path: "../../"})
     end
   end
 
@@ -127,6 +169,10 @@ defmodule Pyre.ToolsTest do
       assert_raise ArgumentError, ~r/Path traversal/, fn ->
         Tools.resolve_path!("../../../etc/passwd", dir)
       end
+    end
+
+    test "resolves current directory", %{dir: dir} do
+      assert Tools.resolve_path!(".", dir) == dir
     end
   end
 end

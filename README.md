@@ -46,6 +46,22 @@ This creates:
 
 ### Configuration
 
+#### PubSub
+
+If using PyreWeb (the web dashboard), configure your app's PubSub server so
+run processes can broadcast real-time updates to LiveViews:
+
+```elixir
+# config/config.exs
+config :pyre, :pubsub, MyApp.PubSub
+```
+
+This should match the PubSub server already started in your application's
+supervision tree. Without this, the CLI (`mix pyre.run`) still works but the
+web dashboard won't show real-time streaming output.
+
+#### LLM API Keys
+
 Pyre calls LLM APIs directly (no CLI dependency). Set your API key:
 
 ```bash

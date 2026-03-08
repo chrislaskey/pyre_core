@@ -24,3 +24,5 @@ pyre-*.tar
 
 # LLM configs
 .claude/settings.local.json
+
+priv/pyre/runs

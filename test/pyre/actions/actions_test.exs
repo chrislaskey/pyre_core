@@ -23,6 +23,20 @@ defmodule Pyre.Actions.ProductManagerTest do
     assert {:ok, content} = Artifact.read(run_dir, "01_requirements")
     assert content =~ "Requirements"
   end
+
+  test "returns error when LLM fails", %{run_dir: run_dir} do
+    defmodule FailingLLM do
+      @behaviour Pyre.LLM
+      def generate(_, _, _ \\ []), do: {:error, :api_error}
+      def stream(_, _, _ \\ []), do: {:error, :api_error}
+      def chat(_, _, _, _ \\ []), do: {:error, :api_error}
+    end
+
+    params = %{feature_description: "Build a products page", run_dir: run_dir}
+    context = %{llm: FailingLLM, streaming: false}
+
+    assert {:error, :api_error} = ProductManager.run(params, context)
+  end
 end
 
 defmodule Pyre.Actions.DesignerTest do
@@ -138,6 +152,25 @@ defmodule Pyre.Actions.TestWriterTest do
     assert result.tests =~ "Test Summary"
     assert {:ok, _} = Artifact.read(run_dir, "04_test_summary")
   end
+
+  test "writes versioned artifact on cycle 2+", %{run_dir: run_dir} do
+    Process.put(:mock_llm_response, "# Tests v2\n\nImproved coverage.")
+
+    params = %{
+      feature_description: "Build a products page",
+      requirements: "Requirements",
+      design: "Design",
+      implementation: "Implementation",
+      run_dir: run_dir,
+      review_cycle: 2,
+      previous_verdict: "REJECT\n\nNeed more tests."
+    }
+
+    context = %{llm: Pyre.LLM.Mock, streaming: false}
+
+    assert {:ok, _result} = TestWriter.run(params, context)
+    assert {:ok, _} = Artifact.read(run_dir, "04_test_summary_v2")
+  end
 end
 
 defmodule Pyre.Actions.QAReviewerTest do
@@ -202,5 +235,29 @@ defmodule Pyre.Actions.QAReviewerTest do
     assert QAReviewer.parse_verdict("REJECT\nNeeds work.") == :reject
     assert QAReviewer.parse_verdict("NEEDS WORK") == :reject
     assert QAReviewer.parse_verdict("") == :reject
+  end
+
+  test "parse_verdict handles leading whitespace" do
+    assert QAReviewer.parse_verdict("  APPROVE\nLooks good.") == :approve
+    assert QAReviewer.parse_verdict("\n\nAPPROVE") == :approve
+  end
+
+  test "writes versioned verdict artifact on cycle 2+", %{run_dir: run_dir} do
+    Process.put(:mock_llm_response, "APPROVE\n\nBetter now.")
+
+    params = %{
+      feature_description: "Build a products page",
+      requirements: "Requirements",
+      design: "Design",
+      implementation: "Implementation",
+      tests: "Tests",
+      run_dir: run_dir,
+      review_cycle: 2
+    }
+
+    context = %{llm: Pyre.LLM.Mock, streaming: false}
+
+    assert {:ok, _result} = QAReviewer.run(params, context)
+    assert {:ok, _} = Artifact.read(run_dir, "05_review_verdict_v2")
   end
 end
