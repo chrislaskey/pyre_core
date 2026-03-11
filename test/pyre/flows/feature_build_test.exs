@@ -28,7 +28,8 @@ defmodule Pyre.Flows.FeatureBuildTest do
       "# Design\n\nProducts page design.",
       "# Implementation\n\nImplemented the feature.",
       "# Tests\n\nAll tests pass.",
-      "APPROVE\n\nGreat work!"
+      "APPROVE\n\nGreat work!",
+      "## Branch Name\n\nfeature/products-page\n\n## Commit Message\n\nfeat: add products page\n\n## PR Title\n\nAdd products page\n\n## PR Body\n\nImplements products page."
     ])
 
     result =
@@ -48,6 +49,7 @@ defmodule Pyre.Flows.FeatureBuildTest do
     assert state.design =~ "Design"
     assert state.implementation =~ "Implementation"
     assert state.tests =~ "Tests"
+    assert state.shipping_summary != nil
   end
 
   test "review loop retries on reject then approves", %{tmp_dir: tmp_dir} do
@@ -58,10 +60,11 @@ defmodule Pyre.Flows.FeatureBuildTest do
       "# Implementation\n\nFirst attempt.",
       "# Tests\n\nFirst tests.",
       "REJECT\n\nNeeds more test coverage.",
-      # Cycle 2: Programmer, TestWriter, Reviewer (APPROVE)
+      # Cycle 2: Programmer, TestWriter, Reviewer (APPROVE), Shipper
       "# Implementation v2\n\nFixed implementation.",
       "# Tests v2\n\nImproved tests.",
-      "APPROVE\n\nLooks good now."
+      "APPROVE\n\nLooks good now.",
+      "## Branch Name\n\nfeature/products-page\n\n## Commit Message\n\nfeat: add products page\n\n## PR Title\n\nAdd products page\n\n## PR Body\n\nImplements products page."
     ])
 
     result =
@@ -118,7 +121,8 @@ defmodule Pyre.Flows.FeatureBuildTest do
       "Design.",
       "Impl.",
       "Tests.",
-      "APPROVE\n\nGood."
+      "APPROVE\n\nGood.",
+      "## Branch Name\n\nfeature/change\n\n## Commit Message\n\nfeat: change\n\n## PR Title\n\nChange\n\n## PR Body\n\nChange."
     ])
 
     # Fast mode sets model_override in context. We verify it completes
@@ -160,7 +164,8 @@ defmodule Pyre.Flows.FeatureBuildTest do
       "Design.",
       "Impl.",
       "Tests.",
-      "APPROVE\n\nGood."
+      "APPROVE\n\nGood.",
+      "## Branch Name\n\nfeature/change\n\n## Commit Message\n\nfeat: change\n\n## PR Title\n\nChange\n\n## PR Body\n\nChange."
     ])
 
     logs = Agent.start_link(fn -> [] end) |> elem(1)
@@ -210,7 +215,8 @@ defmodule Pyre.Flows.FeatureBuildTest do
       "Design.",
       "Impl.",
       "Tests.",
-      "APPROVE\n\nGood."
+      "APPROVE\n\nGood.",
+      "## Branch Name\n\nfeature/change\n\n## Commit Message\n\nfeat: change\n\n## PR Title\n\nChange\n\n## PR Body\n\nChange."
     ])
 
     logs = Agent.start_link(fn -> [] end) |> elem(1)
@@ -240,7 +246,8 @@ defmodule Pyre.Flows.FeatureBuildTest do
       "Design.",
       "Impl.",
       "Tests.",
-      "APPROVE\n\nGood."
+      "APPROVE\n\nGood.",
+      "## Branch Name\n\nfeature/change\n\n## Commit Message\n\nfeat: change\n\n## PR Title\n\nChange\n\n## PR Body\n\nChange."
     ])
 
     output = Agent.start_link(fn -> [] end) |> elem(1)

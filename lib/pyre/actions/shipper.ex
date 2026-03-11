@@ -55,19 +55,26 @@ defmodule Pyre.Actions.Shipper do
           working_dir = Map.get(context, :working_dir, ".")
           log_fn = Map.get(context, :log_fn, &IO.puts/1)
 
-          if Map.get(context, :dry_run, false) do
-            :ok = Artifact.write(params.run_dir, @artifact_base, text)
-            {:ok, %{shipping_summary: text}}
-          else
-            case execute_shipping(shipping_plan, working_dir, log_fn) do
-              {:ok, result} ->
-                summary = build_summary(shipping_plan, result)
-                :ok = Artifact.write(params.run_dir, @artifact_base, summary)
-                {:ok, %{shipping_summary: summary}}
+          cond do
+            Map.get(context, :dry_run, false) ->
+              :ok = Artifact.write(params.run_dir, @artifact_base, text)
+              {:ok, %{shipping_summary: text}}
 
-              {:error, _} = error ->
-                error
-            end
+            not git_repo?(working_dir) ->
+              log_fn.("Not a git repository — skipping git operations")
+              :ok = Artifact.write(params.run_dir, @artifact_base, text)
+              {:ok, %{shipping_summary: text}}
+
+            true ->
+              case execute_shipping(shipping_plan, working_dir, log_fn) do
+                {:ok, result} ->
+                  summary = build_summary(shipping_plan, result)
+                  :ok = Artifact.write(params.run_dir, @artifact_base, summary)
+                  {:ok, %{shipping_summary: summary}}
+
+                {:error, _} = error ->
+                  error
+              end
           end
 
         {:error, _} = error ->
@@ -105,6 +112,16 @@ defmodule Pyre.Actions.Shipper do
     text
     |> String.replace(~r/^```\w*\n/m, "")
     |> String.replace(~r/\n```$/m, "")
+  end
+
+  defp git_repo?(working_dir) do
+    case System.cmd("git", ["rev-parse", "--is-inside-work-tree"],
+           cd: working_dir,
+           stderr_to_stdout: true
+         ) do
+      {"true\n", 0} -> true
+      _ -> false
+    end
   end
 
   defp execute_shipping(plan, working_dir, log_fn) do

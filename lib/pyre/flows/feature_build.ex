@@ -36,7 +36,7 @@ defmodule Pyre.Flows.FeatureBuild do
     designing: [:implementing],
     implementing: [:testing],
     testing: [:reviewing],
-    reviewing: [:implementing, :shipping],
+    reviewing: [:implementing, :shipping, :complete],
     shipping: [:complete],
     complete: []
   }
