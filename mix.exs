@@ -50,7 +50,8 @@ defmodule Pyre.MixProject do
       {:inflex, "~> 2.1"},
       {:igniter, "~> 0.7"},
       {:jido, "~> 2.0"},
-      {:jido_ai, "~> 2.0.0-rc.0"}
+      {:jido_ai, "~> 2.0.0-rc.0"},
+      {:req, "~> 0.5", optional: true}
     ]
   end
 end

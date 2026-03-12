@@ -88,10 +88,22 @@ defmodule Pyre.RunServerTest do
     %{tmp_dir: tmp_dir, pubsub: pubsub}
   end
 
-  test "start_run/2 returns {:ok, id} where id is 8-char hex" do
-    AgentMock.setup(["Req.", "Design.", "Impl.", "Tests.", "APPROVE\n\nGood.", "## Branch Name\n\nfeature/page\n\n## Commit Message\n\nfeat: add page\n\n## PR Title\n\nAdd page\n\n## PR Body\n\nAdds page."])
+  test "start_run/2 returns {:ok, id} where id is 8-char hex", %{tmp_dir: tmp_dir} do
+    AgentMock.setup([
+      "Req.",
+      "Design.",
+      "Impl.",
+      "Tests.",
+      "APPROVE\n\nGood.",
+      "## Branch Name\n\nfeature/page\n\n## Commit Message\n\nfeat: add page\n\n## PR Title\n\nAdd page\n\n## PR Body\n\nAdds page."
+    ])
 
-    {:ok, id} = Pyre.RunServer.start_run("Build a page", llm: AgentMock, streaming: false)
+    {:ok, id} =
+      Pyre.RunServer.start_run("Build a page",
+        llm: AgentMock,
+        streaming: false,
+        project_dir: tmp_dir
+      )
 
     assert is_binary(id)
     assert String.length(id) == 8
@@ -102,7 +114,14 @@ defmodule Pyre.RunServerTest do
   end
 
   test "get_state/1 returns state with correct fields", %{tmp_dir: tmp_dir} do
-    AgentMock.setup(["Req.", "Design.", "Impl.", "Tests.", "APPROVE\n\nGood.", "## Branch Name\n\nfeature/page\n\n## Commit Message\n\nfeat: add page\n\n## PR Title\n\nAdd page\n\n## PR Body\n\nAdds page."])
+    AgentMock.setup([
+      "Req.",
+      "Design.",
+      "Impl.",
+      "Tests.",
+      "APPROVE\n\nGood.",
+      "## Branch Name\n\nfeature/page\n\n## Commit Message\n\nfeat: add page\n\n## PR Title\n\nAdd page\n\n## PR Body\n\nAdds page."
+    ])
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
@@ -121,7 +140,14 @@ defmodule Pyre.RunServerTest do
   end
 
   test "get_log/1 returns buffered entries", %{tmp_dir: tmp_dir} do
-    AgentMock.setup(["Req.", "Design.", "Impl.", "Tests.", "APPROVE\n\nGood.", "## Branch Name\n\nfeature/page\n\n## Commit Message\n\nfeat: add page\n\n## PR Title\n\nAdd page\n\n## PR Body\n\nAdds page."])
+    AgentMock.setup([
+      "Req.",
+      "Design.",
+      "Impl.",
+      "Tests.",
+      "APPROVE\n\nGood.",
+      "## Branch Name\n\nfeature/page\n\n## Commit Message\n\nfeat: add page\n\n## PR Title\n\nAdd page\n\n## PR Body\n\nAdds page."
+    ])
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
@@ -139,7 +165,14 @@ defmodule Pyre.RunServerTest do
   end
 
   test "list_runs/0 includes started run with summary", %{tmp_dir: tmp_dir} do
-    AgentMock.setup(["Req.", "Design.", "Impl.", "Tests.", "APPROVE\n\nGood.", "## Branch Name\n\nfeature/page\n\n## Commit Message\n\nfeat: add page\n\n## PR Title\n\nAdd page\n\n## PR Body\n\nAdds page."])
+    AgentMock.setup([
+      "Req.",
+      "Design.",
+      "Impl.",
+      "Tests.",
+      "APPROVE\n\nGood.",
+      "## Branch Name\n\nfeature/page\n\n## Commit Message\n\nfeat: add page\n\n## PR Title\n\nAdd page\n\n## PR Body\n\nAdds page."
+    ])
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
@@ -159,7 +192,14 @@ defmodule Pyre.RunServerTest do
   end
 
   test "PubSub events are received by subscribers", %{tmp_dir: tmp_dir, pubsub: pubsub} do
-    AgentMock.setup(["Req.", "Design.", "Impl.", "Tests.", "APPROVE\n\nGood.", "## Branch Name\n\nfeature/page\n\n## Commit Message\n\nfeat: add page\n\n## PR Title\n\nAdd page\n\n## PR Body\n\nAdds page."])
+    AgentMock.setup([
+      "Req.",
+      "Design.",
+      "Impl.",
+      "Tests.",
+      "APPROVE\n\nGood.",
+      "## Branch Name\n\nfeature/page\n\n## Commit Message\n\nfeat: add page\n\n## PR Title\n\nAdd page\n\n## PR Body\n\nAdds page."
+    ])
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
@@ -178,7 +218,14 @@ defmodule Pyre.RunServerTest do
   end
 
   test "completed run has :complete status and 'Pipeline complete.' in log", %{tmp_dir: tmp_dir} do
-    AgentMock.setup(["Req.", "Design.", "Impl.", "Tests.", "APPROVE\n\nGood.", "## Branch Name\n\nfeature/page\n\n## Commit Message\n\nfeat: add page\n\n## PR Title\n\nAdd page\n\n## PR Body\n\nAdds page."])
+    AgentMock.setup([
+      "Req.",
+      "Design.",
+      "Impl.",
+      "Tests.",
+      "APPROVE\n\nGood.",
+      "## Branch Name\n\nfeature/page\n\n## Commit Message\n\nfeat: add page\n\n## PR Title\n\nAdd page\n\n## PR Body\n\nAdds page."
+    ])
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
@@ -201,7 +248,12 @@ defmodule Pyre.RunServerTest do
   test "skipped stages use best practices fallback", %{tmp_dir: tmp_dir} do
     # Only need 4 mock responses: product_manager, programmer, test_writer, shipper
     # designer and code_reviewer are skipped (skipped reviewer gives approve fallback → shipping)
-    AgentMock.setup(["Req.", "Impl.", "Tests.", "## Branch Name\n\nfeature/page\n\n## Commit Message\n\nfeat: add page\n\n## PR Title\n\nAdd page\n\n## PR Body\n\nAdds page."])
+    AgentMock.setup([
+      "Req.",
+      "Impl.",
+      "Tests.",
+      "## Branch Name\n\nfeature/page\n\n## Commit Message\n\nfeat: add page\n\n## PR Title\n\nAdd page\n\n## PR Body\n\nAdds page."
+    ])
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
@@ -225,7 +277,14 @@ defmodule Pyre.RunServerTest do
   end
 
   test "toggle_stage/2 adds and removes stages", %{tmp_dir: tmp_dir} do
-    AgentMock.setup(["Req.", "Design.", "Impl.", "Tests.", "APPROVE\n\nGood.", "## Branch Name\n\nfeature/page\n\n## Commit Message\n\nfeat: add page\n\n## PR Title\n\nAdd page\n\n## PR Body\n\nAdds page."])
+    AgentMock.setup([
+      "Req.",
+      "Design.",
+      "Impl.",
+      "Tests.",
+      "APPROVE\n\nGood.",
+      "## Branch Name\n\nfeature/page\n\n## Commit Message\n\nfeat: add page\n\n## PR Title\n\nAdd page\n\n## PR Body\n\nAdds page."
+    ])
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",

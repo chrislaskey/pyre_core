@@ -340,6 +340,7 @@ defmodule Pyre.RunServer do
         message =~ ~r/Stage: programmer/ -> :implementing
         message =~ ~r/Stage: test_writer/ -> :testing
         message =~ ~r/Stage: code_reviewer/ -> :reviewing
+        message =~ ~r/Stage: shipper/ -> :shipping
         true -> nil
       end
 

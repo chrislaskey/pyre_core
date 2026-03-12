@@ -3,8 +3,8 @@
 Multi-agent LLM framework for rapid Phoenix development.
 
 Pyre orchestrates specialized LLM agents — Product Manager, Designer,
-Programmer, Test Writer, and Code Reviewer — to implement features in your
-Phoenix application.
+Programmer, Test Writer, Code Reviewer, and Shipper — to implement features
+in your Phoenix application and open GitHub PRs.
 
 Orchestration layer runs on [Jido](https://jido.run/). Each agent is a reusable
 [Jido Action](https://hexdocs.pm/jido_action/Jido.Action.html) with a persona
@@ -60,6 +60,46 @@ This should match the PubSub server already started in your application's
 supervision tree. Without this, the CLI (`mix pyre.run`) still works but the
 web dashboard won't show real-time streaming output.
 
+#### GitHub (Shipper)
+
+To enable the Shipper agent (creates branches and opens GitHub PRs), configure
+your repository in `config/runtime.exs`:
+
+```elixir
+# config/runtime.exs
+if github_token = System.get_env("GITHUB_TOKEN") do
+  config :pyre, :github,
+    default_token: github_token,
+    repositories: [
+      [
+        owner: System.get_env("PYRE_GITHUB_OWNER"),
+        repo: System.get_env("PYRE_GITHUB_REPO"),
+        token: System.get_env("PYRE_GITHUB_TOKEN", github_token),
+        base_branch: System.get_env("PYRE_GITHUB_BASE_BRANCH", "main")
+      ]
+    ]
+end
+```
+
+Set the required environment variables:
+
+```bash
+export GITHUB_TOKEN=ghp_...
+export PYRE_GITHUB_OWNER=myorg
+export PYRE_GITHUB_REPO=my-app
+```
+
+When using Pyre as a library (e.g. via PyreWeb), the host app sets this config
+in its own `runtime.exs`. The Shipper automatically picks up the first
+configured repository. To target a specific repo at runtime, pass the
+`:github` option:
+
+```elixir
+Pyre.Flows.FeatureBuild.run("Build a feature",
+  github: %{owner: "acme", repo: "app", token: token, base_branch: "main"}
+)
+```
+
 #### LLM API Keys
 
 Pyre calls LLM APIs directly (no CLI dependency). Set your API key:
@@ -103,7 +143,7 @@ Run the feature-building pipeline:
 mix pyre.run "Build a products listing page with sorting and filtering"
 ```
 
-This runs five agents in sequence:
+This runs six agents in sequence:
 
 ```
 Feature Request
@@ -113,6 +153,7 @@ Feature Request
   -> Test Writer        (ExUnit tests)
   -> Code Reviewer      (APPROVE or REJECT)
        -> If REJECT: loop Programmer/TestWriter/Reviewer (up to 3 cycles)
+  -> Shipper            (git branch, commit, push, open GitHub PR)
 ```
 
 Output streams to the terminal token-by-token so you can see each agent
@@ -140,6 +181,7 @@ Each run creates a timestamped directory in `priv/pyre/runs/` containing:
 | `03_implementation_summary.md` | Programmer | Code changes made |
 | `04_test_summary.md` | Test Writer | Tests written |
 | `05_review_verdict.md` | Code Reviewer | APPROVE or REJECT with feedback |
+| `06_shipping_summary.md` | Shipper | Branch name, commit, PR URL |
 
 On review rejection cycles, artifacts are versioned (`_v2`, `_v3`).
 
@@ -159,6 +201,7 @@ lib/pyre/actions/
   programmer.ex         # Implementation (versioned on review cycles)
   test_writer.ex        # Test coverage (versioned)
   qa_reviewer.ex        # APPROVE/REJECT verdict (reusable across flows)
+  shipper.ex            # Git branch, commit, push, and GitHub PR
 ```
 
 **Flows** — Pipeline drivers that compose actions into a specific workflow.
@@ -167,7 +210,7 @@ Each flow defines its phases and valid transitions:
 ```
 lib/pyre/flows/
   feature_build.ex      # planning -> designing -> implementing ->
-                        #   testing -> reviewing -> complete
+                        #   testing -> reviewing -> shipping -> complete
 ```
 
 **Plugins** — Shared utilities used by all actions:

@@ -24,6 +24,9 @@ defmodule Pyre.Flows.FeatureBuild do
     * `:project_dir` -- Working directory for the agents. Default `"."`.
     * `:output_fn` -- Function called with each streaming token. Default `&IO.write/1`.
     * `:log_fn` -- Function called with status/progress messages. Default `&IO.puts/1`.
+    * `:github` -- GitHub repo config map with `:owner`, `:repo`, `:token`, and
+      optional `:base_branch`. Required for the shipping phase to create PRs.
+      Typically set via `config :pyre, :github` in `runtime.exs`.
   """
 
   alias Pyre.Actions.{ProductManager, Designer, Programmer, TestWriter, QAReviewer, Shipper}
@@ -63,7 +66,8 @@ defmodule Pyre.Flows.FeatureBuild do
       dry_run: Keyword.get(opts, :dry_run, false),
       working_dir: working_dir,
       allowed_commands: Keyword.get(opts, :allowed_commands),
-      skip_check_fn: Keyword.get(opts, :skip_check_fn)
+      skip_check_fn: Keyword.get(opts, :skip_check_fn),
+      github: Keyword.get(opts, :github) || github_from_config()
     }
 
     with {:ok, run_dir} <- Artifact.create_run_dir(runs_dir),
@@ -336,5 +340,31 @@ defmodule Pyre.Flows.FeatureBuild do
     minutes = div(seconds, 60)
     remaining = rem(seconds, 60)
     "#{minutes}m #{remaining}s"
+  end
+
+  defp github_from_config do
+    case Application.get_env(:pyre, :github) do
+      nil ->
+        %{}
+
+      config ->
+        repos = Keyword.get(config, :repositories, [])
+
+        case repos do
+          [first | _] ->
+            %{
+              owner: Keyword.get(first, :owner),
+              repo: Keyword.get(first, :repo),
+              token: Keyword.get(first, :token) || Keyword.get(config, :default_token),
+              base_branch: Keyword.get(first, :base_branch, "main")
+            }
+
+          [] ->
+            case Keyword.get(config, :default_token) do
+              nil -> %{}
+              token -> %{token: token}
+            end
+        end
+    end
   end
 end

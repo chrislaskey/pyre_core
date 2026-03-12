@@ -5,6 +5,14 @@ defmodule Pyre.Actions.Shipper do
   Uses a single LLM call to generate creative content (branch name, commit
   message, PR title, PR body) from all prior artifacts, then executes git
   commands programmatically.
+
+  ## GitHub Configuration
+
+  Requires `context.github` with `:owner`, `:repo`, and `:token` keys.
+  Optional `:base_branch` defaults to `"main"`.
+
+  These are typically set via `config :pyre, :github` in `runtime.exs` and
+  threaded through the flow context.
   """
 
   use Jido.Action,
@@ -53,7 +61,6 @@ defmodule Pyre.Actions.Shipper do
         {:ok, text} ->
           shipping_plan = parse_shipping_plan(text)
           working_dir = Map.get(context, :working_dir, ".")
-          log_fn = Map.get(context, :log_fn, &IO.puts/1)
 
           cond do
             Map.get(context, :dry_run, false) ->
@@ -61,12 +68,13 @@ defmodule Pyre.Actions.Shipper do
               {:ok, %{shipping_summary: text}}
 
             not git_repo?(working_dir) ->
+              log_fn = Map.get(context, :log_fn, &IO.puts/1)
               log_fn.("Not a git repository — skipping git operations")
               :ok = Artifact.write(params.run_dir, @artifact_base, text)
               {:ok, %{shipping_summary: text}}
 
             true ->
-              case execute_shipping(shipping_plan, working_dir, log_fn) do
+              case execute_shipping(shipping_plan, working_dir, context) do
                 {:ok, result} ->
                   summary = build_summary(shipping_plan, result)
                   :ok = Artifact.write(params.run_dir, @artifact_base, summary)
@@ -89,7 +97,11 @@ defmodule Pyre.Actions.Shipper do
 
     %{
       branch_name: sections |> Map.get("Branch Name", "feature/pyre-changes") |> String.trim(),
-      commit_message: sections |> Map.get("Commit Message", "feat: implement feature") |> strip_code_fences() |> String.trim(),
+      commit_message:
+        sections
+        |> Map.get("Commit Message", "feat: implement feature")
+        |> strip_code_fences()
+        |> String.trim(),
       pr_title: sections |> Map.get("PR Title", "Implement feature") |> String.trim(),
       pr_body: sections |> Map.get("PR Body", "") |> String.trim()
     }
@@ -124,32 +136,64 @@ defmodule Pyre.Actions.Shipper do
     end
   end
 
-  defp execute_shipping(plan, working_dir, log_fn) do
+  defp execute_shipping(plan, working_dir, context) do
+    log_fn = Map.get(context, :log_fn, &IO.puts/1)
+
     with :ok <- run_git(["checkout", "-b", plan.branch_name], working_dir, log_fn),
          :ok <- run_git(["add", "-A"], working_dir, log_fn),
          :ok <- run_git(["commit", "-m", plan.commit_message], working_dir, log_fn),
          :ok <- run_git(["push", "-u", "origin", plan.branch_name], working_dir, log_fn) do
-      pr_result = create_pr(plan, working_dir, log_fn)
+      pr_result = create_pr(plan, context)
       {:ok, pr_result}
     end
   end
 
-  defp create_pr(plan, working_dir, log_fn) do
-    {output, code} =
-      System.cmd("gh", ["pr", "create", "--title", plan.pr_title, "--body", plan.pr_body],
-        cd: working_dir,
-        stderr_to_stdout: true
-      )
+  defp create_pr(plan, context) do
+    log_fn = Map.get(context, :log_fn, &IO.puts/1)
+    github = Map.get(context, :github, %{})
 
-    if code == 0 do
-      pr_url = output |> String.trim()
-      log_fn.("PR created: #{pr_url}")
-      %{pr_url: pr_url}
-    else
-      log_fn.("Warning: could not create PR (gh CLI returned #{code}): #{String.trim(output)}")
-      %{pr_url: nil, pr_error: String.trim(output)}
+    owner = github[:owner]
+    repo = github[:repo]
+    token = github[:token]
+    base = github[:base_branch] || "main"
+
+    cond do
+      is_nil(owner) or is_nil(repo) ->
+        log_fn.("Warning: could not create PR (github owner/repo not configured)")
+        %{pr_url: nil, pr_error: "github owner/repo not configured"}
+
+      is_nil(token) ->
+        log_fn.("Warning: could not create PR (github token not configured)")
+        %{pr_url: nil, pr_error: "github token not configured"}
+
+      true ->
+        case Pyre.GitHub.create_pull_request(
+               owner,
+               repo,
+               %{
+                 title: plan.pr_title,
+                 body: plan.pr_body,
+                 head: plan.branch_name,
+                 base: base
+               },
+               token
+             ) do
+          {:ok, %{url: url}} ->
+            log_fn.("PR created: #{url}")
+            %{pr_url: url}
+
+          {:error, reason} ->
+            log_fn.("Warning: could not create PR (#{format_pr_error(reason)})")
+            %{pr_url: nil, pr_error: format_pr_error(reason)}
+        end
     end
   end
+
+  defp format_pr_error(:req_not_available), do: "req dependency not available"
+  defp format_pr_error({:validation_error, msg}), do: "GitHub: #{msg}"
+  defp format_pr_error({:api_error, status, msg}), do: "GitHub API #{status}: #{msg}"
+  defp format_pr_error({:request_failed, reason}), do: "request failed: #{inspect(reason)}"
+  defp format_pr_error(other), do: inspect(other)
 
   defp run_git(args, working_dir, log_fn) do
     log_fn.("  git #{Enum.join(args, " ")}")
