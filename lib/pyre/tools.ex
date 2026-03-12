@@ -97,13 +97,26 @@ defmodule Pyre.Tools do
     [expanded_wd | Enum.map(extra, &Path.expand(&1, expanded_wd))]
   end
 
+  defp paths_description(base_paths) do
+    case base_paths do
+      [single] ->
+        "Project root: #{single}. Relative paths resolve from project root."
+
+      [primary | extra] ->
+        dirs = Enum.join(extra, ", ")
+
+        "Project root: #{primary}. Additional accessible directories: #{dirs}. " <>
+          "Use absolute paths to access files outside the project root."
+    end
+  end
+
   # --- Tool Definitions ---
 
   defp read_file_tool(base_paths) do
     ReqLLM.Tool.new!(
       name: "read_file",
       description:
-        "Read the contents of a file. Path can be absolute or relative to the project root.",
+        "Read the contents of a file. Path can be absolute or relative to the project root. #{paths_description(base_paths)}",
       parameter_schema: [
         path: [
           type: :string,
@@ -126,7 +139,7 @@ defmodule Pyre.Tools do
     ReqLLM.Tool.new!(
       name: "write_file",
       description:
-        "Write content to a file. Path can be absolute or relative to the project root. Creates parent directories if needed.",
+        "Write content to a file. Path can be absolute or relative to the project root. Creates parent directories if needed. #{paths_description(base_paths)}",
       parameter_schema: [
         path: [
           type: :string,
@@ -151,7 +164,7 @@ defmodule Pyre.Tools do
     ReqLLM.Tool.new!(
       name: "list_directory",
       description:
-        "List files and directories at the given path. Path can be absolute or relative to the project root.",
+        "List files and directories at the given path. Path can be absolute or relative to the project root. #{paths_description(base_paths)}",
       parameter_schema: [
         path: [
           type: :string,
