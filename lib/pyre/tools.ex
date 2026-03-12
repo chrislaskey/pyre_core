@@ -93,7 +93,8 @@ defmodule Pyre.Tools do
 
   defp build_base_paths(working_dir, opts) do
     extra = Keyword.get(opts, :allowed_paths, [])
-    [Path.expand(working_dir) | Enum.map(extra, &Path.expand/1)]
+    expanded_wd = Path.expand(working_dir)
+    [expanded_wd | Enum.map(extra, &Path.expand(&1, expanded_wd))]
   end
 
   # --- Tool Definitions ---
@@ -101,9 +102,14 @@ defmodule Pyre.Tools do
   defp read_file_tool(base_paths) do
     ReqLLM.Tool.new!(
       name: "read_file",
-      description: "Read the contents of a file. Path can be absolute or relative to the project root.",
+      description:
+        "Read the contents of a file. Path can be absolute or relative to the project root.",
       parameter_schema: [
-        path: [type: :string, required: true, doc: "File path (absolute or relative to project root)"]
+        path: [
+          type: :string,
+          required: true,
+          doc: "File path (absolute or relative to project root)"
+        ]
       ],
       callback: fn %{path: path} ->
         full_path = resolve_path!(path, base_paths)
@@ -122,7 +128,11 @@ defmodule Pyre.Tools do
       description:
         "Write content to a file. Path can be absolute or relative to the project root. Creates parent directories if needed.",
       parameter_schema: [
-        path: [type: :string, required: true, doc: "File path (absolute or relative to project root)"],
+        path: [
+          type: :string,
+          required: true,
+          doc: "File path (absolute or relative to project root)"
+        ],
         content: [type: :string, required: true, doc: "Complete file content to write"]
       ],
       callback: fn %{path: path, content: content} ->
@@ -143,7 +153,11 @@ defmodule Pyre.Tools do
       description:
         "List files and directories at the given path. Path can be absolute or relative to the project root.",
       parameter_schema: [
-        path: [type: :string, required: true, doc: "Directory path (absolute or relative to project root)"]
+        path: [
+          type: :string,
+          required: true,
+          doc: "Directory path (absolute or relative to project root)"
+        ]
       ],
       callback: fn %{path: path} ->
         full_path = resolve_path!(path, base_paths)

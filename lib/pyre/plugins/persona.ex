@@ -40,7 +40,13 @@ defmodule Pyre.Plugins.Persona do
   content parts) instead of a plain string.
   """
   @spec user_message(String.t(), String.t(), String.t(), String.t(), [map()]) :: map()
-  def user_message(feature_description, artifacts_content, run_dir, artifact_filename, attachments \\ []) do
+  def user_message(
+        feature_description,
+        artifacts_content,
+        run_dir,
+        artifact_filename,
+        attachments \\ []
+      ) do
     alias Pyre.Plugins.Artifact
 
     text_attachments = Enum.filter(attachments, &Artifact.text_attachment?/1)

@@ -101,7 +101,9 @@ defmodule Pyre.Actions.ShipperTest do
       Process.put(:mock_llm_response, @llm_response)
 
       # Create a temporary git repo so we reach the config check
-      git_dir = Path.join(System.tmp_dir!(), "pyre_git_test_#{System.unique_integer([:positive])}")
+      git_dir =
+        Path.join(System.tmp_dir!(), "pyre_git_test_#{System.unique_integer([:positive])}")
+
       File.mkdir_p!(git_dir)
       System.cmd("git", ["init"], cd: git_dir)
       on_exit(fn -> File.rm_rf!(git_dir) end)

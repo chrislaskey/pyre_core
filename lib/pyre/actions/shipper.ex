@@ -77,7 +77,9 @@ defmodule Pyre.Actions.Shipper do
               {:ok, %{shipping_summary: text}}
 
             not github_configured?(context) ->
-              {:error, {:github_not_configured, "GitHub is not configured. See the Pyre README for details."}}
+              {:error,
+               {:github_not_configured,
+                "GitHub is not configured. See the Pyre README for details."}}
 
             true ->
               case execute_shipping(shipping_plan, working_dir, context) do

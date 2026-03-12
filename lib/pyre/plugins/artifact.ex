@@ -150,7 +150,13 @@ defmodule Pyre.Plugins.Artifact do
 
           case File.read(path) do
             {:ok, content} ->
-              [%{filename: filename, content: content, media_type: media_type_from_filename(filename)}]
+              [
+                %{
+                  filename: filename,
+                  content: content,
+                  media_type: media_type_from_filename(filename)
+                }
+              ]
 
             {:error, _} ->
               []
