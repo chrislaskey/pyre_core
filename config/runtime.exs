@@ -9,6 +9,15 @@ if config_env() != :test do
     config :req_llm, openai_api_key: api_key
   end
 
+  if paths = System.get_env("PYRE_ALLOWED_PATHS") do
+    config :pyre,
+      allowed_paths:
+        paths
+        |> String.split(",", trim: true)
+        |> Enum.map(&String.trim/1)
+        |> Enum.map(&Path.expand/1)
+  end
+
   if System.get_env("GITHUB_REPO_URL") do
     config :pyre, :github,
       repositories: [

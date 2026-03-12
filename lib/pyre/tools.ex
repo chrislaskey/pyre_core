@@ -21,7 +21,7 @@ defmodule Pyre.Tools do
 
   Provides file system and shell tools that agents use to read, write,
   and execute commands in the target project directory. Tools are sandboxed
-  to the working directory via path validation.
+  to the working directory (and any additional allowed paths) via path validation.
 
   ## Configuration
 
@@ -29,6 +29,12 @@ defmodule Pyre.Tools do
 
       Pyre.Tools.for_role(:programmer, "/path/to/project",
         allowed_commands: ~w(mix elixir ls grep git)
+      )
+
+  Additional directories can be made accessible via `:allowed_paths`:
+
+      Pyre.Tools.for_role(:programmer, "/path/to/project",
+        allowed_paths: ["/path/to/other/app"]
       )
 
   Default allowed commands: #{inspect(@default_allowed_commands)}
@@ -46,11 +52,15 @@ defmodule Pyre.Tools do
 
     * `:allowed_commands` — List of command prefixes the `run_command` tool
       will accept. Defaults to `#{inspect(@default_allowed_commands)}`.
+    * `:allowed_paths` — Additional absolute directory paths that file tools
+      can read and write. Useful for monorepos where agents need access to
+      sibling apps.
 
   ## Examples
 
       Pyre.Tools.for_role(:programmer, "/path/to/project")
       Pyre.Tools.for_role(:programmer, "/path/to/project", allowed_commands: ~w(mix elixir ls))
+      Pyre.Tools.for_role(:programmer, "/path/to/project", allowed_paths: ["/path/to/other/app"])
       Pyre.Tools.for_role(:qa_reviewer, "/path/to/project")
   """
   def for_role(role, working_dir, opts \\ [])
@@ -60,36 +70,43 @@ defmodule Pyre.Tools do
 
   def for_role(:qa_reviewer, working_dir, opts) do
     allowed = Keyword.get(opts, :allowed_commands, @default_allowed_commands)
+    base_paths = build_base_paths(working_dir, opts)
 
     [
-      read_file_tool(working_dir),
-      list_directory_tool(working_dir),
+      read_file_tool(base_paths),
+      list_directory_tool(base_paths),
       run_command_tool(working_dir, allowed)
     ]
   end
 
   defp all_tools(working_dir, opts) do
     allowed = Keyword.get(opts, :allowed_commands, @default_allowed_commands)
+    base_paths = build_base_paths(working_dir, opts)
 
     [
-      read_file_tool(working_dir),
-      write_file_tool(working_dir),
-      list_directory_tool(working_dir),
+      read_file_tool(base_paths),
+      write_file_tool(base_paths),
+      list_directory_tool(base_paths),
       run_command_tool(working_dir, allowed)
     ]
   end
 
+  defp build_base_paths(working_dir, opts) do
+    extra = Keyword.get(opts, :allowed_paths, [])
+    [Path.expand(working_dir) | Enum.map(extra, &Path.expand/1)]
+  end
+
   # --- Tool Definitions ---
 
-  defp read_file_tool(working_dir) do
+  defp read_file_tool(base_paths) do
     ReqLLM.Tool.new!(
       name: "read_file",
-      description: "Read the contents of a file. Path is relative to the project root.",
+      description: "Read the contents of a file. Path can be absolute or relative to the project root.",
       parameter_schema: [
-        path: [type: :string, required: true, doc: "File path relative to the project root"]
+        path: [type: :string, required: true, doc: "File path (absolute or relative to project root)"]
       ],
       callback: fn %{path: path} ->
-        full_path = resolve_path!(path, working_dir)
+        full_path = resolve_path!(path, base_paths)
 
         case File.read(full_path) do
           {:ok, content} -> {:ok, content}
@@ -99,17 +116,17 @@ defmodule Pyre.Tools do
     )
   end
 
-  defp write_file_tool(working_dir) do
+  defp write_file_tool(base_paths) do
     ReqLLM.Tool.new!(
       name: "write_file",
       description:
-        "Write content to a file. Path is relative to the project root. Creates parent directories if needed.",
+        "Write content to a file. Path can be absolute or relative to the project root. Creates parent directories if needed.",
       parameter_schema: [
-        path: [type: :string, required: true, doc: "File path relative to the project root"],
+        path: [type: :string, required: true, doc: "File path (absolute or relative to project root)"],
         content: [type: :string, required: true, doc: "Complete file content to write"]
       ],
       callback: fn %{path: path, content: content} ->
-        full_path = resolve_path!(path, working_dir)
+        full_path = resolve_path!(path, base_paths)
         File.mkdir_p!(Path.dirname(full_path))
 
         case File.write(full_path, content) do
@@ -120,16 +137,16 @@ defmodule Pyre.Tools do
     )
   end
 
-  defp list_directory_tool(working_dir) do
+  defp list_directory_tool(base_paths) do
     ReqLLM.Tool.new!(
       name: "list_directory",
       description:
-        "List files and directories at the given path. Path is relative to the project root.",
+        "List files and directories at the given path. Path can be absolute or relative to the project root.",
       parameter_schema: [
-        path: [type: :string, required: true, doc: "Directory path relative to the project root"]
+        path: [type: :string, required: true, doc: "Directory path (absolute or relative to project root)"]
       ],
       callback: fn %{path: path} ->
-        full_path = resolve_path!(path, working_dir)
+        full_path = resolve_path!(path, base_paths)
 
         case File.ls(full_path) do
           {:ok, entries} -> {:ok, entries |> Enum.sort() |> Enum.join("\n")}
@@ -172,15 +189,25 @@ defmodule Pyre.Tools do
   # --- Safety ---
 
   @doc false
-  def resolve_path!(relative_path, working_dir) do
-    full_path = Path.expand(relative_path, working_dir)
-    expanded_wd = Path.expand(working_dir)
+  def resolve_path!(relative_path, base_paths) when is_list(base_paths) do
+    primary = hd(base_paths)
+    full_path = Path.expand(relative_path, primary)
 
-    unless String.starts_with?(full_path, expanded_wd <> "/") or full_path == expanded_wd do
+    allowed? =
+      Enum.any?(base_paths, fn base ->
+        expanded = Path.expand(base)
+        full_path == expanded or String.starts_with?(full_path, expanded <> "/")
+      end)
+
+    unless allowed? do
       raise ArgumentError, "Path traversal blocked: #{relative_path}"
     end
 
     full_path
+  end
+
+  def resolve_path!(relative_path, working_dir) when is_binary(working_dir) do
+    resolve_path!(relative_path, [working_dir])
   end
 
   defp validate_command!(command, allowed_commands) do

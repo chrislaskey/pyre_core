@@ -57,13 +57,21 @@ defmodule Pyre.Actions.Helpers do
   @doc """
   Builds tool options from the flow context.
 
-  Extracts `:allowed_commands` when present, returning a keyword list
-  suitable for passing to `Pyre.Tools.for_role/3`.
+  Extracts `:allowed_commands` and `:allowed_paths` when present,
+  returning a keyword list suitable for passing to `Pyre.Tools.for_role/3`.
   """
   def tool_opts(context) do
-    case Map.get(context, :allowed_commands) do
-      nil -> []
-      commands -> [allowed_commands: commands]
+    opts = []
+
+    opts =
+      case Map.get(context, :allowed_commands) do
+        nil -> opts
+        commands -> Keyword.put(opts, :allowed_commands, commands)
+      end
+
+    case Map.get(context, :allowed_paths) do
+      nil -> opts
+      paths -> Keyword.put(opts, :allowed_paths, paths)
     end
   end
 

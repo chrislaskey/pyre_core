@@ -22,6 +22,10 @@ defmodule Pyre.Flows.FeatureBuild do
     * `:streaming` -- Stream LLM output token-by-token. Default `true`.
     * `:verbose` -- Print diagnostic information. Default `false`.
     * `:project_dir` -- Working directory for the agents. Default `"."`.
+    * `:allowed_paths` -- Additional directories agents can read/write. Useful for
+      monorepos where agents need access to sibling apps. Accepts a list of absolute
+      paths. Also configurable via `PYRE_ALLOWED_PATHS` env var (comma-separated)
+      or `config :pyre, :allowed_paths`.
     * `:output_fn` -- Function called with each streaming token. Default `&IO.write/1`.
     * `:log_fn` -- Function called with status/progress messages. Default `&IO.puts/1`.
     * `:github` -- GitHub repo config map with `:owner`, `:repo`, `:token`, and
@@ -56,6 +60,8 @@ defmodule Pyre.Flows.FeatureBuild do
     working_dir = Path.expand(project_dir)
     runs_dir = Path.expand("priv/pyre/runs", File.cwd!())
 
+    allowed_paths = Keyword.get(opts, :allowed_paths) || allowed_paths_from_config()
+
     context = %{
       llm: Keyword.get(opts, :llm, Pyre.LLM),
       streaming: streaming?,
@@ -65,6 +71,7 @@ defmodule Pyre.Flows.FeatureBuild do
       verbose: verbose?,
       dry_run: Keyword.get(opts, :dry_run, false),
       working_dir: working_dir,
+      allowed_paths: allowed_paths,
       allowed_commands: Keyword.get(opts, :allowed_commands),
       skip_check_fn: Keyword.get(opts, :skip_check_fn),
       github: Keyword.get(opts, :github) || github_from_config()
@@ -358,6 +365,13 @@ defmodule Pyre.Flows.FeatureBuild do
     minutes = div(seconds, 60)
     remaining = rem(seconds, 60)
     "#{minutes}m #{remaining}s"
+  end
+
+  defp allowed_paths_from_config do
+    case Application.get_env(:pyre, :allowed_paths) do
+      nil -> []
+      paths when is_list(paths) -> paths
+    end
   end
 
   defp github_from_config do
