@@ -68,7 +68,12 @@ defmodule Pyre.Tools do
   def for_role(:programmer, working_dir, opts), do: all_tools(working_dir, opts)
   def for_role(:test_writer, working_dir, opts), do: all_tools(working_dir, opts)
 
-  def for_role(:qa_reviewer, working_dir, opts) do
+  def for_role(:qa_reviewer, working_dir, opts), do: read_only_tools(working_dir, opts)
+  def for_role(:designer, working_dir, opts), do: read_only_tools(working_dir, opts)
+  def for_role(:product_manager, working_dir, opts), do: read_only_tools(working_dir, opts)
+  def for_role(:shipper, working_dir, opts), do: read_only_tools(working_dir, opts)
+
+  defp read_only_tools(working_dir, opts) do
     allowed = Keyword.get(opts, :allowed_commands, @default_allowed_commands)
     base_paths = build_base_paths(working_dir, opts)
 

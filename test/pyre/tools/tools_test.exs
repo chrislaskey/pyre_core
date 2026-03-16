@@ -33,6 +33,32 @@ defmodule Pyre.ToolsTest do
       assert length(tools) == 3
       refute "write_file" in names
     end
+
+    test "designer gets 3 read-only tools", %{dir: dir} do
+      tools = Tools.for_role(:designer, dir)
+      names = Enum.map(tools, & &1.name)
+      assert length(tools) == 3
+      assert "read_file" in names
+      assert "list_directory" in names
+      assert "run_command" in names
+      refute "write_file" in names
+    end
+
+    test "product_manager gets 3 read-only tools", %{dir: dir} do
+      tools = Tools.for_role(:product_manager, dir)
+      names = Enum.map(tools, & &1.name)
+      assert length(tools) == 3
+      assert "read_file" in names
+      refute "write_file" in names
+    end
+
+    test "shipper gets 3 read-only tools", %{dir: dir} do
+      tools = Tools.for_role(:shipper, dir)
+      names = Enum.map(tools, & &1.name)
+      assert length(tools) == 3
+      assert "read_file" in names
+      refute "write_file" in names
+    end
   end
 
   describe "read_file" do
