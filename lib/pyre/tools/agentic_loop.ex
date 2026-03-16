@@ -7,7 +7,7 @@ defmodule Pyre.Tools.AgenticLoop do
   LLM produces a final text answer or the iteration limit is reached.
   """
 
-  @max_iterations 100
+  @max_iterations 250
   @default_receive_timeout 300_000
 
   @doc """
@@ -19,7 +19,7 @@ defmodule Pyre.Tools.AgenticLoop do
 
     * `:streaming` - Stream tokens via `output_fn`. Default `false`.
     * `:output_fn` - Token callback for streaming. Default `&IO.write/1`.
-    * `:max_iterations` - Max tool-use turns. Default `100`.
+    * `:max_iterations` - Max tool-use turns. Default `250`.
     * `:log_fn` - Function for status/progress messages. Default `&IO.puts/1`.
     * `:verbose` - Log tool calls. Default `false`.
     * `:receive_timeout` - Per-chunk timeout in ms. Default `300_000` (5 min).
