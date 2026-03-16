@@ -142,6 +142,43 @@ defmodule Pyre.ToolsTest do
       assert {:ok, output} = ReqLLM.Tool.execute(cmd_tool, %{command: "ls nonexistent_dir_xyz"})
       assert output =~ "Exit code"
     end
+
+    test "runs command in cwd when provided", %{dir: dir} do
+      subdir = Path.join(dir, "subapp")
+      File.mkdir_p!(subdir)
+      File.write!(Path.join(subdir, "marker.txt"), "")
+
+      tools = Tools.for_role(:programmer, dir)
+      cmd_tool = Enum.find(tools, &(&1.name == "run_command"))
+      assert {:ok, output} = ReqLLM.Tool.execute(cmd_tool, %{command: "ls", cwd: "subapp"})
+      assert output =~ "marker.txt"
+    end
+
+    test "cwd defaults to working_dir when omitted", %{dir: dir} do
+      File.write!(Path.join(dir, "root.txt"), "")
+
+      tools = Tools.for_role(:programmer, dir)
+      cmd_tool = Enum.find(tools, &(&1.name == "run_command"))
+      assert {:ok, output} = ReqLLM.Tool.execute(cmd_tool, %{command: "ls"})
+      assert output =~ "root.txt"
+    end
+
+    test "cwd accepts absolute path within allowed_paths", %{dir: dir} do
+      sibling = Path.join(dir, "sibling_app")
+      File.mkdir_p!(sibling)
+      File.write!(Path.join(sibling, "sibling.txt"), "")
+
+      tools = Tools.for_role(:programmer, dir, allowed_paths: [sibling])
+      cmd_tool = Enum.find(tools, &(&1.name == "run_command"))
+      assert {:ok, output} = ReqLLM.Tool.execute(cmd_tool, %{command: "ls", cwd: sibling})
+      assert output =~ "sibling.txt"
+    end
+
+    test "cwd blocks path traversal", %{dir: dir} do
+      tools = Tools.for_role(:programmer, dir)
+      cmd_tool = Enum.find(tools, &(&1.name == "run_command"))
+      assert {:error, _} = ReqLLM.Tool.execute(cmd_tool, %{command: "ls", cwd: "../../"})
+    end
   end
 
   describe "for_role/3 with options" do

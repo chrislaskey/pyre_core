@@ -80,7 +80,7 @@ defmodule Pyre.Tools do
     [
       read_file_tool(base_paths),
       list_directory_tool(base_paths),
-      run_command_tool(working_dir, allowed)
+      run_command_tool(working_dir, allowed, base_paths)
     ]
   end
 
@@ -92,7 +92,7 @@ defmodule Pyre.Tools do
       read_file_tool(base_paths),
       write_file_tool(base_paths),
       list_directory_tool(base_paths),
-      run_command_tool(working_dir, allowed)
+      run_command_tool(working_dir, allowed, base_paths)
     ]
   end
 
@@ -225,20 +225,34 @@ defmodule Pyre.Tools do
     end
   end
 
-  defp run_command_tool(working_dir, allowed_commands) do
+  defp run_command_tool(working_dir, allowed_commands, base_paths) do
     ReqLLM.Tool.new!(
       name: "run_command",
       description:
-        "Run a shell command in the project directory. Allowed commands: #{Enum.join(allowed_commands, ", ")}.",
+        "Run a shell command in the project directory. Allowed commands: #{Enum.join(allowed_commands, ", ")}. " <>
+          "Use the optional cwd parameter to run the command in a different directory (validated against allowed paths). " <>
+          "#{paths_description(base_paths)}",
       parameter_schema: [
-        command: [type: :string, required: true, doc: "Shell command to execute"]
+        command: [type: :string, required: true, doc: "Shell command to execute"],
+        cwd: [
+          type: :string,
+          required: false,
+          doc:
+            "Working directory for the command (absolute or relative to project root). Defaults to project root."
+        ]
       ],
-      callback: fn %{command: command} ->
-        validate_command!(command, allowed_commands)
+      callback: fn params ->
+        validate_command!(params.command, allowed_commands)
+
+        cwd =
+          case Map.get(params, :cwd) do
+            nil -> working_dir
+            dir -> resolve_path!(dir, base_paths)
+          end
 
         {output, code} =
-          System.cmd("sh", ["-c", command],
-            cd: working_dir,
+          System.cmd("sh", ["-c", params.command],
+            cd: cwd,
             stderr_to_stdout: true,
             env: [{"MIX_ENV", "dev"}]
           )
