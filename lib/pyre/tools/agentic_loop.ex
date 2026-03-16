@@ -7,7 +7,7 @@ defmodule Pyre.Tools.AgenticLoop do
   LLM produces a final text answer or the iteration limit is reached.
   """
 
-  @max_iterations 25
+  @max_iterations 100
   @default_receive_timeout 300_000
 
   @doc """
@@ -19,7 +19,7 @@ defmodule Pyre.Tools.AgenticLoop do
 
     * `:streaming` - Stream tokens via `output_fn`. Default `false`.
     * `:output_fn` - Token callback for streaming. Default `&IO.write/1`.
-    * `:max_iterations` - Max tool-use turns. Default `25`.
+    * `:max_iterations` - Max tool-use turns. Default `100`.
     * `:log_fn` - Function for status/progress messages. Default `&IO.puts/1`.
     * `:verbose` - Log tool calls. Default `false`.
     * `:receive_timeout` - Per-chunk timeout in ms. Default `300_000` (5 min).
@@ -46,8 +46,14 @@ defmodule Pyre.Tools.AgenticLoop do
     loop(llm_module, model, messages, tools, 0, config, "")
   end
 
-  defp loop(_llm, _model, _messages, _tools, iteration, %{max_iter: max_iter}, accumulated)
+  defp loop(_llm, _model, _messages, _tools, iteration, %{max_iter: max_iter} = config, accumulated)
        when iteration >= max_iter do
+    config.log_fn.(
+      "\n⚠ Reached maximum tool-use iterations (#{max_iter}). " <>
+        "The agent may not have finished its work. " <>
+        "Increase :max_iterations if needed."
+    )
+
     {:ok, accumulated <> "\n\n(Reached maximum tool-use iterations)"}
   end
 
