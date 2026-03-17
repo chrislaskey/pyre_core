@@ -85,13 +85,13 @@ defmodule Pyre.LLM.ClaudeCLI do
 
   @impl true
   def chat(model, messages, _tools, opts \\ []) do
-    streaming? = Keyword.get(opts, :streaming, false)
-    output_fn = Keyword.get(opts, :output_fn, &IO.write/1)
     timeout = Keyword.get(opts, :timeout, @default_timeout)
     max_turns = Keyword.get(opts, :max_turns, @default_max_turns)
     working_dir = Keyword.get(opts, :working_dir)
     cli_model = map_model(model)
     {system_prompt, user_prompt} = extract_prompts(messages)
+
+    Logger.info("[ClaudeCLI] chat/4 model=#{cli_model} working_dir=#{inspect(working_dir)} prompt_len=#{byte_size(user_prompt)}")
 
     args =
       build_base_args(cli_model, system_prompt) ++
@@ -102,31 +102,23 @@ defmodule Pyre.LLM.ClaudeCLI do
           "Bash,Read,Edit,Write,Glob,Grep",
           "--no-session-persistence",
           "--max-turns",
-          to_string(max_turns)
+          to_string(max_turns),
+          "--output-format",
+          "json",
+          "-p",
+          user_prompt
         ]
 
     run_opts = if working_dir, do: [cd: working_dir], else: []
 
-    if streaming? do
-      streaming_args =
-        args ++
-          [
-            "--output-format",
-            "stream-json",
-            "--verbose",
-            "--include-partial-messages",
-            "-p",
-            user_prompt
-          ]
+    case run_cli(args, timeout, run_opts) do
+      {:ok, output} ->
+        Logger.info("[ClaudeCLI] chat/4 success, output_len=#{byte_size(output)}")
+        parse_json_result(output)
 
-      run_cli_streaming(streaming_args, output_fn, timeout, run_opts)
-    else
-      batch_args = args ++ ["--output-format", "json", "-p", user_prompt]
-
-      case run_cli(batch_args, timeout, run_opts) do
-        {:ok, output} -> parse_json_result(output)
-        {:error, _} = error -> error
-      end
+      {:error, _} = error ->
+        Logger.warning("[ClaudeCLI] chat/4 failed: #{inspect(error)}")
+        error
     end
   end
 
