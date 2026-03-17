@@ -72,7 +72,14 @@ defmodule Pyre.Actions.QAReviewer do
 
   @doc false
   def parse_verdict(text) do
-    first_line = text |> String.trim() |> String.split("\n") |> List.first("")
-    if String.match?(first_line, ~r/^APPROVE/i), do: :approve, else: :reject
+    verdict_line =
+      text
+      |> String.split("\n")
+      |> Enum.find("", fn line ->
+        trimmed = String.trim(line)
+        String.match?(trimmed, ~r/^APPROVE/i) or String.match?(trimmed, ~r/^REJECT/i)
+      end)
+
+    if String.match?(String.trim(verdict_line), ~r/^APPROVE/i), do: :approve, else: :reject
   end
 end

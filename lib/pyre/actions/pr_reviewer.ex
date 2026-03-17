@@ -60,6 +60,7 @@ defmodule Pyre.Actions.PRReviewer do
           :ok = Artifact.write(params.run_dir, @artifact_base, text)
           verdict = Pyre.Actions.QAReviewer.parse_verdict(text)
 
+          commit_review_artifact(working_dir, context)
           maybe_post_review(verdict, text, params, context)
 
           {:ok, %{review: text, verdict: verdict}}
@@ -67,6 +68,34 @@ defmodule Pyre.Actions.PRReviewer do
         {:error, _} = error ->
           error
       end
+    end
+  end
+
+  defp commit_review_artifact(working_dir, context) do
+    log_fn = Map.get(context, :log_fn, &IO.puts/1)
+
+    with true <- git_repo?(working_dir),
+         {_, 0} <- System.cmd("git", ["add", "-A"], cd: working_dir, stderr_to_stdout: true),
+         {_, 0} <-
+           System.cmd("git", ["commit", "-m", "chore: add pyre review artifacts"],
+             cd: working_dir,
+             stderr_to_stdout: true
+           ),
+         {_, 0} <- System.cmd("git", ["push"], cd: working_dir, stderr_to_stdout: true) do
+      log_fn.("Committed and pushed review artifacts")
+    else
+      false -> :ok
+      {output, code} -> log_fn.("Warning: could not commit review artifacts (exit #{code}: #{String.trim(output)})")
+    end
+  end
+
+  defp git_repo?(working_dir) do
+    case System.cmd("git", ["rev-parse", "--is-inside-work-tree"],
+           cd: working_dir,
+           stderr_to_stdout: true
+         ) do
+      {"true\n", 0} -> true
+      _ -> false
     end
   end
 
