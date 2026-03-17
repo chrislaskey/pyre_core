@@ -132,10 +132,13 @@ defmodule Pyre.RunServer do
       |> Keyword.get(:skipped_stages, [])
       |> MapSet.new()
 
+    workflow = Keyword.get(opts, :workflow, :feature_build)
+
     state = %{
       id: id,
       status: :running,
       phase: :planning,
+      workflow: workflow,
       feature_description: feature_description,
       log: [],
       started_at: now,
@@ -163,9 +166,11 @@ defmodule Pyre.RunServer do
         GenServer.call(server, {:stage_skipped?, phase})
       end)
 
+    flow_module = flow_module(state.workflow)
+
     task =
       Task.Supervisor.async_nolink(Jido.Action.TaskSupervisor, fn ->
-        Pyre.Flows.FeatureBuild.run(state.feature_description, flow_opts)
+        flow_module.run(state.feature_description, flow_opts)
       end)
 
     {:noreply, state |> Map.put(:task_ref, task.ref) |> Map.put(:task_pid, task.pid)}
@@ -345,6 +350,10 @@ defmodule Pyre.RunServer do
         message =~ ~r/Stage: test_writer/ -> :testing
         message =~ ~r/Stage: code_reviewer/ -> :reviewing
         message =~ ~r/Stage: shipper/ -> :shipping
+        message =~ ~r/Stage: software_architect/ -> :architecting
+        message =~ ~r/Stage: branch_setup/ -> :branch_setup
+        message =~ ~r/Stage: software_engineer/ -> :engineering
+        message =~ ~r/Stage: pr_reviewer/ -> :reviewing
         true -> nil
       end
 
@@ -356,10 +365,14 @@ defmodule Pyre.RunServer do
     end
   end
 
+  defp flow_module(:iterative_build), do: Pyre.Flows.IterativeBuild
+  defp flow_module(_), do: Pyre.Flows.FeatureBuild
+
   defp update_registry_meta(state) do
     meta = %{
       status: state.status,
       phase: state.phase,
+      workflow: state.workflow,
       feature_description: state.feature_description,
       started_at: state.started_at,
       completed_at: state.completed_at

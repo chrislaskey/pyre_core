@@ -133,6 +133,54 @@ defmodule Pyre.GitHub do
   end
 
   @doc """
+  Creates a review on a GitHub pull request.
+
+  ## Params
+
+    * `owner` — Repository owner
+    * `repo` — Repository name
+    * `pr_number` — Pull request number
+    * `body` — Review comment body (markdown)
+    * `event` — Review event: `"APPROVE"`, `"REQUEST_CHANGES"`, or `"COMMENT"`
+    * `token` — GitHub personal access token
+
+  Returns `{:ok, %{id: review_id}}` on success, or `{:error, reason}` on failure.
+  """
+  @spec create_review(String.t(), String.t(), integer(), String.t(), String.t(), String.t()) ::
+          {:ok, %{id: integer()}} | {:error, term()}
+  def create_review(owner, repo, pr_number, body, event, token) do
+    unless Code.ensure_loaded?(Req) do
+      {:error, :req_not_available}
+    else
+      request_body = %{body: body, event: event}
+
+      case Req.post("#{@base_url}/repos/#{owner}/#{repo}/pulls/#{pr_number}/reviews",
+             json: request_body,
+             headers: [
+               {"authorization", "Bearer #{token}"},
+               {"accept", "application/vnd.github+json"},
+               {"x-github-api-version", "2022-11-28"}
+             ]
+           ) do
+        {:ok, %{status: 200, body: resp_body}} ->
+          {:ok, %{id: resp_body["id"]}}
+
+        {:ok, %{status: 422, body: resp_body}} ->
+          message =
+            get_in(resp_body, ["errors", Access.at(0), "message"]) || resp_body["message"]
+
+          {:error, {:validation_error, message}}
+
+        {:ok, %{status: status, body: resp_body}} ->
+          {:error, {:api_error, status, resp_body["message"]}}
+
+        {:error, reason} ->
+          {:error, {:request_failed, reason}}
+      end
+    end
+  end
+
+  @doc """
   Parses a GitHub remote URL into `{owner, repo}`.
 
   Supports both SSH and HTTPS formats:

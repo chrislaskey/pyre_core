@@ -59,6 +59,26 @@ defmodule Pyre.ToolsTest do
       assert "read_file" in names
       refute "write_file" in names
     end
+
+    test "software_architect gets 3 read-only tools", %{dir: dir} do
+      tools = Tools.for_role(:software_architect, dir)
+      names = Enum.map(tools, & &1.name)
+      assert length(tools) == 3
+      assert "read_file" in names
+      assert "list_directory" in names
+      assert "run_command" in names
+      refute "write_file" in names
+    end
+
+    test "software_engineer gets 4 full tools", %{dir: dir} do
+      tools = Tools.for_role(:software_engineer, dir)
+      names = Enum.map(tools, & &1.name)
+      assert length(tools) == 4
+      assert "read_file" in names
+      assert "write_file" in names
+      assert "list_directory" in names
+      assert "run_command" in names
+    end
   end
 
   describe "read_file" do

@@ -46,7 +46,15 @@ defmodule Pyre.Tools.AgenticLoop do
     loop(llm_module, model, messages, tools, 0, config, "")
   end
 
-  defp loop(_llm, _model, _messages, _tools, iteration, %{max_iter: max_iter} = config, accumulated)
+  defp loop(
+         _llm,
+         _model,
+         _messages,
+         _tools,
+         iteration,
+         %{max_iter: max_iter} = config,
+         accumulated
+       )
        when iteration >= max_iter do
     config.log_fn.(
       "\n⚠ Reached maximum tool-use iterations (#{max_iter}). " <>
