@@ -97,9 +97,10 @@ defmodule Pyre.LLM.ClaudeCLI do
       build_base_args(cli_model, system_prompt) ++
         [
           "--permission-mode",
-          "bypass_permissions",
+          "bypassPermissions",
           "--allowedTools",
           "Bash,Read,Edit,Write,Glob,Grep",
+          "--no-session-persistence",
           "--max-turns",
           to_string(max_turns)
         ]
