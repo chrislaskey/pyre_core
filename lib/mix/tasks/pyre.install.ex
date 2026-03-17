@@ -13,7 +13,6 @@ defmodule Mix.Tasks.Pyre.Install do
 
     * Copies built-in persona `.md` files to `priv/pyre/personas/`
     * Creates `priv/pyre/runs/.gitkeep`
-    * Adds `.gitignore` entries for `priv/pyre/runs/*`
 
   Files that already exist are not overwritten, so local customizations
   to personas are preserved.
@@ -22,14 +21,7 @@ defmodule Mix.Tasks.Pyre.Install do
 
   use Igniter.Mix.Task
 
-  @personas ~w(product_manager designer programmer test_writer code_reviewer)
-
-  @gitignore_entries """
-
-  # Pyre agent run output
-  /priv/pyre/runs/*
-  !/priv/pyre/runs/.gitkeep
-  """
+  @personas ~w(product_manager designer programmer test_writer code_reviewer software_architect software_engineer shipper)
 
   @impl Igniter.Mix.Task
   def info(_argv, _composing_task) do
@@ -50,25 +42,6 @@ defmodule Mix.Tasks.Pyre.Install do
         Igniter.create_new_file(acc, dest, File.read!(source), on_exists: :skip)
       end)
 
-    igniter
-    |> Igniter.create_new_file("priv/pyre/runs/.gitkeep", "", on_exists: :skip)
-    |> append_gitignore()
-  end
-
-  defp append_gitignore(igniter) do
-    Igniter.create_or_update_file(
-      igniter,
-      ".gitignore",
-      String.trim(@gitignore_entries),
-      fn source ->
-        content = Rewrite.Source.get(source, :content)
-
-        if String.contains?(content, "/priv/pyre/runs/*") do
-          source
-        else
-          Rewrite.Source.update(source, :content, content <> @gitignore_entries)
-        end
-      end
-    )
+    Igniter.create_new_file(igniter, "priv/pyre/runs/.gitkeep", "", on_exists: :skip)
   end
 end
