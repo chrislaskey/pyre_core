@@ -85,13 +85,17 @@ defmodule Pyre.LLM.ClaudeCLI do
 
   @impl true
   def chat(model, messages, _tools, opts \\ []) do
+    streaming? = Keyword.get(opts, :streaming, false)
+    output_fn = Keyword.get(opts, :output_fn, &IO.write/1)
     timeout = Keyword.get(opts, :timeout, @default_timeout)
     max_turns = Keyword.get(opts, :max_turns, @default_max_turns)
     working_dir = Keyword.get(opts, :working_dir)
     cli_model = map_model(model)
     {system_prompt, user_prompt} = extract_prompts(messages)
 
-    Logger.info("[ClaudeCLI] chat/4 model=#{cli_model} working_dir=#{inspect(working_dir)} prompt_len=#{byte_size(user_prompt)}")
+    Logger.info(
+      "[ClaudeCLI] chat/4 model=#{cli_model} streaming=#{streaming?} prompt_len=#{byte_size(user_prompt)}"
+    )
 
     args =
       build_base_args(cli_model, system_prompt) ++
@@ -102,23 +106,31 @@ defmodule Pyre.LLM.ClaudeCLI do
           "Bash,Read,Edit,Write,Glob,Grep",
           "--no-session-persistence",
           "--max-turns",
-          to_string(max_turns),
-          "--output-format",
-          "json",
-          "-p",
-          user_prompt
+          to_string(max_turns)
         ]
 
     run_opts = if working_dir, do: [cd: working_dir], else: []
 
-    case run_cli(args, timeout, run_opts) do
-      {:ok, output} ->
-        Logger.info("[ClaudeCLI] chat/4 success, output_len=#{byte_size(output)}")
-        parse_json_result(output)
+    if streaming? do
+      streaming_args =
+        args ++
+          [
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--include-partial-messages",
+            "-p",
+            user_prompt
+          ]
 
-      {:error, _} = error ->
-        Logger.warning("[ClaudeCLI] chat/4 failed: #{inspect(error)}")
-        error
+      run_cli_streaming(streaming_args, output_fn, timeout, run_opts)
+    else
+      batch_args = args ++ ["--output-format", "json", "-p", user_prompt]
+
+      case run_cli(batch_args, timeout, run_opts) do
+        {:ok, output} -> parse_json_result(output)
+        {:error, _} = error -> error
+      end
     end
   end
 
@@ -268,6 +280,15 @@ defmodule Pyre.LLM.ClaudeCLI do
 
   defp process_stream_line(line, output_fn, accumulated) do
     case Jason.decode(line) do
+      # stream_event wrapper (--include-partial-messages mode)
+      {:ok, %{"type" => "stream_event", "event" => event}} ->
+        process_stream_event(event, output_fn, accumulated)
+
+      # Bare SSE events (some CLI versions emit without wrapper)
+      {:ok, %{"type" => "content_block_delta"} = event} ->
+        process_stream_event(event, output_fn, accumulated)
+
+      # Full assistant message (non-partial mode / --verbose)
       {:ok, %{"type" => "assistant", "message" => %{"content" => content}}} ->
         text =
           content
@@ -275,8 +296,9 @@ defmodule Pyre.LLM.ClaudeCLI do
           |> Enum.map_join("", fn part -> Map.get(part, "text", "") end)
 
         if text != "", do: output_fn.(text)
-        text
+        accumulated <> text
 
+      # Final result
       {:ok, %{"type" => "result", "result" => text}} when is_binary(text) ->
         text
 
@@ -284,6 +306,18 @@ defmodule Pyre.LLM.ClaudeCLI do
         accumulated
     end
   end
+
+  defp process_stream_event(
+         %{"type" => "content_block_delta", "delta" => %{"type" => "text_delta", "text" => text}},
+         output_fn,
+         accumulated
+       )
+       when is_binary(text) and text != "" do
+    output_fn.(text)
+    accumulated <> text
+  end
+
+  defp process_stream_event(_event, _output_fn, accumulated), do: accumulated
 
   # --- JSON Parsing ---
 
