@@ -2,7 +2,7 @@ defmodule Mix.Tasks.Pyre.Install do
   @moduledoc """
   Installs Pyre into a Phoenix project.
 
-  Copies default persona files and creates the runs directory so the
+  Copies default persona files and creates the features directory so the
   multi-agent pipeline can operate in the consuming project.
 
   ## Usage
@@ -12,12 +12,12 @@ defmodule Mix.Tasks.Pyre.Install do
   ## What it does
 
     * Copies built-in persona `.md` files to `priv/pyre/personas/`
-    * Creates `priv/pyre/runs/.gitkeep`
+    * Creates `priv/pyre/features/.gitkeep`
 
   Files that already exist are not overwritten, so local customizations
   to personas are preserved.
   """
-  @shortdoc "Installs Pyre persona files and run directory"
+  @shortdoc "Installs Pyre persona files and features directory"
 
   use Igniter.Mix.Task
 
@@ -42,6 +42,6 @@ defmodule Mix.Tasks.Pyre.Install do
         Igniter.create_new_file(acc, dest, File.read!(source), on_exists: :skip)
       end)
 
-    Igniter.create_new_file(igniter, "priv/pyre/runs/.gitkeep", "", on_exists: :skip)
+    Igniter.create_new_file(igniter, "priv/pyre/features/.gitkeep", "", on_exists: :skip)
   end
 end

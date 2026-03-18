@@ -7,7 +7,7 @@ defmodule Pyre.Actions.SoftwareArchitectTest do
   setup do
     tmp_dir = Path.join(System.tmp_dir!(), "pyre_sa_test_#{System.unique_integer([:positive])}")
     File.mkdir_p!(tmp_dir)
-    {:ok, run_dir} = Artifact.create_run_dir(tmp_dir)
+    {:ok, run_dir, _feature_dir} = Artifact.create_run_dir(tmp_dir)
     on_exit(fn -> File.rm_rf!(tmp_dir) end)
     %{run_dir: run_dir}
   end
@@ -40,7 +40,7 @@ defmodule Pyre.Actions.BranchSetupTest do
   setup do
     tmp_dir = Path.join(System.tmp_dir!(), "pyre_bs_test_#{System.unique_integer([:positive])}")
     File.mkdir_p!(tmp_dir)
-    {:ok, run_dir} = Artifact.create_run_dir(tmp_dir)
+    {:ok, run_dir, _feature_dir} = Artifact.create_run_dir(tmp_dir)
     on_exit(fn -> File.rm_rf!(tmp_dir) end)
     %{run_dir: run_dir}
   end
@@ -110,7 +110,7 @@ defmodule Pyre.Actions.SoftwareEngineerTest do
   setup do
     tmp_dir = Path.join(System.tmp_dir!(), "pyre_se_test_#{System.unique_integer([:positive])}")
     File.mkdir_p!(tmp_dir)
-    {:ok, run_dir} = Artifact.create_run_dir(tmp_dir)
+    {:ok, run_dir, _feature_dir} = Artifact.create_run_dir(tmp_dir)
     on_exit(fn -> File.rm_rf!(tmp_dir) end)
     %{run_dir: run_dir}
   end
@@ -145,7 +145,7 @@ defmodule Pyre.Actions.PRReviewerTest do
   setup do
     tmp_dir = Path.join(System.tmp_dir!(), "pyre_prr_test_#{System.unique_integer([:positive])}")
     File.mkdir_p!(tmp_dir)
-    {:ok, run_dir} = Artifact.create_run_dir(tmp_dir)
+    {:ok, run_dir, _feature_dir} = Artifact.create_run_dir(tmp_dir)
     on_exit(fn -> File.rm_rf!(tmp_dir) end)
     %{run_dir: run_dir}
   end

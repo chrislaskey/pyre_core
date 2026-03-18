@@ -69,7 +69,8 @@ defmodule Pyre.Actions.Helpers do
       output_fn: Map.get(context, :output_fn, &IO.write/1),
       working_dir: Map.get(context, :working_dir),
       verbose: Map.get(context, :verbose, false),
-      max_turns: Map.get(context, :max_turns, 50)
+      max_turns: Map.get(context, :max_turns, 50),
+      add_dirs: Map.get(context, :add_dirs, [])
     ]
   end
 

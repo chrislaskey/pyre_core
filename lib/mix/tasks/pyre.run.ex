@@ -18,6 +18,7 @@ defmodule Mix.Tasks.Pyre.Run do
     * `--project-dir` -- Working directory for the agents (default: `.`)
     * `--no-stream` -- Disable streaming output
     * `--attach` / `-a` -- Attach a file to the prompt (repeatable)
+    * `--feature` / `-n` -- Feature name to group related runs (optional)
 
   ## Attachments
 
@@ -27,7 +28,7 @@ defmodule Mix.Tasks.Pyre.Run do
 
   ## Output
 
-  Artifacts are written to `priv/pyre/runs/<timestamp>/`:
+  Artifacts are written to `priv/pyre/features/<feature>/<timestamp>/`:
     - `00_feature.md` -- Original feature request
     - `01_requirements.md` -- Product Manager output
     - `02_design_spec.md` -- Designer output
@@ -46,9 +47,10 @@ defmodule Mix.Tasks.Pyre.Run do
     verbose: :boolean,
     project_dir: :string,
     no_stream: :boolean,
-    attach: :keep
+    attach: :keep,
+    feature: :string
   ]
-  @aliases [f: :fast, d: :dry_run, v: :verbose, p: :project_dir, a: :attach]
+  @aliases [f: :fast, d: :dry_run, v: :verbose, p: :project_dir, a: :attach, n: :feature]
 
   @impl Mix.Task
   def run(argv) do
@@ -78,7 +80,8 @@ defmodule Mix.Tasks.Pyre.Run do
       project_dir: Keyword.get(opts, :project_dir, "."),
       streaming: !Keyword.get(opts, :no_stream, false),
       log_fn: fn msg -> Mix.shell().info(msg) end,
-      attachments: attachments
+      attachments: attachments,
+      feature: Keyword.get(opts, :feature)
     ]
 
     case Pyre.Flows.FeatureBuild.run(feature_description, flow_opts) do

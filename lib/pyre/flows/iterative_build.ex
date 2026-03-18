@@ -61,30 +61,35 @@ defmodule Pyre.Flows.IterativeBuild do
     verbose? = Keyword.get(opts, :verbose, false)
     project_dir = Keyword.get(opts, :project_dir, ".")
     working_dir = Path.expand(project_dir)
-    runs_dir = Path.expand("priv/pyre/runs", File.cwd!())
+    features_dir = Path.expand("priv/pyre/features", File.cwd!())
+    feature = Keyword.get(opts, :feature)
 
     allowed_paths = Keyword.get(opts, :allowed_paths) || allowed_paths_from_config()
 
-    context = %{
-      llm: Keyword.get(opts, :llm, Pyre.LLM.default()),
-      streaming: streaming?,
-      output_fn: Keyword.get(opts, :output_fn, &IO.write/1),
-      log_fn: Keyword.get(opts, :log_fn, &IO.puts/1),
-      model_override: if(fast?, do: "anthropic:claude-haiku-4-5"),
-      verbose: verbose?,
-      dry_run: Keyword.get(opts, :dry_run, false),
-      working_dir: working_dir,
-      allowed_paths: allowed_paths,
-      allowed_commands: Keyword.get(opts, :allowed_commands),
-      skip_check_fn: Keyword.get(opts, :skip_check_fn),
-      github: Keyword.get(opts, :github) || github_from_config()
-    }
-
     attachments = Keyword.get(opts, :attachments, [])
 
-    with {:ok, run_dir} <- Artifact.create_run_dir(runs_dir),
+    with {:ok, run_dir, feature_dir} <- Artifact.create_run_dir(features_dir, feature),
          :ok <- Artifact.write(run_dir, "00_feature", feature_description),
          :ok <- Artifact.store_attachments(run_dir, attachments) do
+      # Give agents access to the feature dir so they can browse prior runs
+      allowed_paths = [feature_dir | allowed_paths]
+
+      context = %{
+        llm: Keyword.get(opts, :llm, Pyre.LLM.default()),
+        streaming: streaming?,
+        output_fn: Keyword.get(opts, :output_fn, &IO.write/1),
+        log_fn: Keyword.get(opts, :log_fn, &IO.puts/1),
+        model_override: if(fast?, do: "anthropic:claude-haiku-4-5"),
+        verbose: verbose?,
+        dry_run: Keyword.get(opts, :dry_run, false),
+        working_dir: working_dir,
+        allowed_paths: allowed_paths,
+        add_dirs: [feature_dir],
+        allowed_commands: Keyword.get(opts, :allowed_commands),
+        skip_check_fn: Keyword.get(opts, :skip_check_fn),
+        github: Keyword.get(opts, :github) || github_from_config()
+      }
+
       context.log_fn.("Run directory: #{run_dir}")
 
       state = %{

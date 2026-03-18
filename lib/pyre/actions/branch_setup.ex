@@ -4,7 +4,7 @@ defmodule Pyre.Actions.BranchSetup do
 
   Uses the shipper persona to generate a branch name, PR title, and PR body,
   then executes git operations programmatically. Updates `.gitignore` to allow
-  committing `priv/pyre/runs/` artifacts.
+  committing `priv/pyre/features/` artifacts.
   """
 
   use Jido.Action,
@@ -157,17 +157,23 @@ defmodule Pyre.Actions.BranchSetup do
       {:ok, content} ->
         lines = String.split(content, "\n")
 
-        # Remove any line that ignores priv/pyre/runs
+        # Remove any line that ignores priv/pyre/features (or legacy priv/pyre/runs)
         filtered =
           Enum.reject(lines, fn line ->
             trimmed = String.trim(line)
-            trimmed == "priv/pyre/runs" or trimmed == "priv/pyre/runs/"
+
+            trimmed in [
+              "priv/pyre/runs",
+              "priv/pyre/runs/",
+              "priv/pyre/features",
+              "priv/pyre/features/"
+            ]
           end)
 
         if filtered != lines do
           new_content = Enum.join(filtered, "\n")
           File.write!(gitignore_path, new_content)
-          log_fn.("  Updated .gitignore to allow priv/pyre/runs/")
+          log_fn.("  Updated .gitignore to allow priv/pyre/features/")
         end
 
         :ok

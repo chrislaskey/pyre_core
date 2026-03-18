@@ -5,20 +5,111 @@ defmodule Pyre.Plugins.Artifact do
   Manages timestamped run directories and versioned Markdown artifact files.
   """
 
-  @doc """
-  Creates a timestamped run directory under `base_path`.
+  @timestamp_pattern ~r/^\d{8}_\d{6}$/
 
-  Returns `{:ok, run_dir}` where `run_dir` is the full path to the created directory.
+  @doc """
+  Creates a timestamped run directory under `base_path`, grouped by feature.
+
+  When `feature_name` is provided, slugifies it and creates
+  `base_path/{slug}/{timestamp}/`. When nil or empty, uses the timestamp
+  itself as the feature slug (backward-compatible standalone runs).
+
+  Returns `{:ok, run_dir, feature_dir}` where:
+  - `run_dir` is the full path to the timestamped directory
+  - `feature_dir` is the parent feature directory
   """
-  @spec create_run_dir(String.t()) :: {:ok, String.t()} | {:error, term()}
-  def create_run_dir(base_path) do
+  @spec create_run_dir(String.t(), String.t() | nil) ::
+          {:ok, String.t(), String.t()} | {:error, term()}
+  def create_run_dir(base_path, feature_name \\ nil) do
     timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")
-    run_dir = Path.join(base_path, timestamp)
+
+    slug =
+      case feature_name do
+        nil -> timestamp
+        name when is_binary(name) ->
+          slugified = slugify(name)
+          if slugified == "", do: timestamp, else: slugified
+      end
+
+    feature_dir = Path.join(base_path, slug)
+    run_dir = Path.join(feature_dir, timestamp)
 
     case File.mkdir_p(run_dir) do
-      :ok -> {:ok, run_dir}
+      :ok -> {:ok, run_dir, feature_dir}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  @doc """
+  Lists prior runs in a feature directory (newest first).
+
+  Returns a list of timestamp directory names, filtered to match the
+  `YYYYMMDD_HHMMSS` pattern. Excludes any non-timestamp entries.
+  """
+  @spec prior_runs(String.t()) :: [String.t()]
+  def prior_runs(feature_dir) do
+    case File.ls(feature_dir) do
+      {:ok, entries} ->
+        entries
+        |> Enum.filter(&Regex.match?(@timestamp_pattern, &1))
+        |> Enum.sort(:desc)
+
+      {:error, _} ->
+        []
+    end
+  end
+
+  @doc """
+  Lists Markdown artifact files in a run directory, sorted.
+  """
+  @spec list_artifacts(String.t()) :: [String.t()]
+  def list_artifacts(run_dir) do
+    case File.ls(run_dir) do
+      {:ok, entries} ->
+        entries
+        |> Enum.filter(&String.ends_with?(&1, ".md"))
+        |> Enum.sort()
+
+      {:error, _} ->
+        []
+    end
+  end
+
+  @doc """
+  Lists feature directory names under `base_path` (for autocomplete).
+
+  Returns directory names sorted alphabetically, excluding timestamp-only
+  directories (standalone runs).
+  """
+  @spec list_features(String.t()) :: [String.t()]
+  def list_features(base_path) do
+    case File.ls(base_path) do
+      {:ok, entries} ->
+        entries
+        |> Enum.filter(fn entry ->
+          full = Path.join(base_path, entry)
+          File.dir?(full) and not Regex.match?(@timestamp_pattern, entry)
+        end)
+        |> Enum.sort()
+
+      {:error, _} ->
+        []
+    end
+  end
+
+  @doc """
+  Converts a feature name to a URL-safe slug.
+
+  Lowercases, replaces non-alphanumeric characters with hyphens,
+  collapses consecutive hyphens, and trims leading/trailing hyphens.
+  """
+  @spec slugify(String.t()) :: String.t()
+  def slugify(name) when is_binary(name) do
+    name
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "-")
+    |> String.replace(~r/-{2,}/, "-")
+    |> String.trim("-")
   end
 
   @doc """

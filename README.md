@@ -41,7 +41,7 @@ mix pyre.install
 This creates:
 
 - `priv/pyre/personas/` — Editable persona files for each agent
-- `priv/pyre/runs/.gitkeep` — Directory where pipeline artifacts are stored
+- `priv/pyre/features/.gitkeep` — Directory where pipeline artifacts are stored
 - `.gitignore` entries to exclude run output from version control
 
 ### Configuration
@@ -204,11 +204,12 @@ working in real time.
 | `--verbose` | `-v` | Print diagnostic information |
 | `--no-stream` | | Disable streaming (wait for complete responses) |
 | `--project-dir` | `-p` | Working directory for agents (default: `.`) |
+| `--feature` | `-n` | Feature name to group related runs |
 | `--allowed-paths` | | Comma-separated additional directories agents can access |
 
 #### Artifacts
 
-Each run creates a timestamped directory in `priv/pyre/runs/` containing:
+Each run creates a timestamped directory in `priv/pyre/features/<feature>/` containing:
 
 | File | Agent | Content |
 |------|-------|---------|

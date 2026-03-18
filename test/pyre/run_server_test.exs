@@ -76,8 +76,8 @@ defmodule Pyre.RunServerTest do
     tmp_dir =
       Path.join(System.tmp_dir!(), "pyre_run_server_test_#{System.unique_integer([:positive])}")
 
-    runs_dir = Path.join(tmp_dir, "priv/pyre/runs")
-    File.mkdir_p!(runs_dir)
+    features_dir = Path.join(tmp_dir, "priv/pyre/features")
+    File.mkdir_p!(features_dir)
 
     on_exit(fn ->
       AgentMock.teardown()

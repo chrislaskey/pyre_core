@@ -33,7 +33,7 @@ defmodule Pyre.LLM.ClaudeCLI do
   require Logger
 
   @default_timeout 600_000
-  @default_max_turns 50
+  @default_max_turns 500
 
   @impl true
   def manages_tool_loop?, do: true
@@ -90,6 +90,7 @@ defmodule Pyre.LLM.ClaudeCLI do
     timeout = Keyword.get(opts, :timeout, @default_timeout)
     max_turns = Keyword.get(opts, :max_turns, @default_max_turns)
     working_dir = Keyword.get(opts, :working_dir)
+    add_dirs = Keyword.get(opts, :add_dirs, [])
     cli_model = map_model(model)
     {system_prompt, user_prompt} = extract_prompts(messages)
 
@@ -107,7 +108,8 @@ defmodule Pyre.LLM.ClaudeCLI do
           "--no-session-persistence",
           "--max-turns",
           to_string(max_turns)
-        ]
+        ] ++
+        build_add_dir_args(add_dirs)
 
     run_opts = if working_dir, do: [cd: working_dir], else: []
 
@@ -377,6 +379,12 @@ defmodule Pyre.LLM.ClaudeCLI do
   end
 
   # --- Helpers ---
+
+  defp build_add_dir_args([]), do: []
+
+  defp build_add_dir_args(dirs) when is_list(dirs) do
+    Enum.flat_map(dirs, fn dir -> ["--add-dir", dir] end)
+  end
 
   defp build_base_args(model, system_prompt) do
     args = ["--model", model]

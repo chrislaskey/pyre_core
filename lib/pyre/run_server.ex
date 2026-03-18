@@ -139,6 +139,7 @@ defmodule Pyre.RunServer do
       status: :running,
       phase: :planning,
       workflow: workflow,
+      feature: Keyword.get(opts, :feature),
       feature_description: feature_description,
       log: [],
       started_at: now,
@@ -373,6 +374,7 @@ defmodule Pyre.RunServer do
       status: state.status,
       phase: state.phase,
       workflow: state.workflow,
+      feature: state.feature,
       feature_description: state.feature_description,
       started_at: state.started_at,
       completed_at: state.completed_at
