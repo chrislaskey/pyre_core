@@ -74,7 +74,7 @@ defmodule Pyre.Actions.Shipper do
 
       case Helpers.call_llm(context, model, messages, llm_opts) do
         {:ok, text} ->
-          shipping_plan = parse_shipping_plan(text)
+          shipping_plan = parse_shipping_plan(text, params.run_dir)
           working_dir = Map.get(context, :working_dir, ".")
 
           cond do
@@ -112,17 +112,19 @@ defmodule Pyre.Actions.Shipper do
   end
 
   @doc false
-  def parse_shipping_plan(text) do
+  def parse_shipping_plan(text, run_dir \\ nil) do
     sections = split_sections(text)
+    feature = feature_slug(run_dir)
 
     %{
-      branch_name: sections |> Map.get("Branch Name", "feature-pyre-changes") |> String.trim(),
+      branch_name:
+        sections |> Map.get("Branch Name", "feature-#{feature}") |> String.trim(),
       commit_message:
         sections
-        |> Map.get("Commit Message", "feat: implement feature")
+        |> Map.get("Commit Message", "feat: implement #{feature}")
         |> strip_code_fences()
         |> String.trim(),
-      pr_title: sections |> Map.get("PR Title", "Implement feature") |> String.trim(),
+      pr_title: sections |> Map.get("PR Title", "Implement #{feature}") |> String.trim(),
       pr_body: sections |> Map.get("PR Body", "") |> String.trim()
     }
   end
@@ -233,6 +235,19 @@ defmodule Pyre.Actions.Shipper do
       :ok
     else
       {:error, {:git_error, "git #{Enum.join(args, " ")}", code, String.trim(output)}}
+    end
+  end
+
+  defp feature_slug(nil), do: "pyre-changes"
+
+  defp feature_slug(run_dir) do
+    # run_dir is {base}/{feature_slug}/{timestamp}
+    slug = run_dir |> Path.dirname() |> Path.basename()
+
+    if Regex.match?(~r/^\d{8}_\d{6}$/, slug) do
+      "pyre-changes"
+    else
+      slug
     end
   end
 

@@ -102,7 +102,7 @@ defmodule Pyre.Actions.BranchSetup do
          :ok <- run_git(["add", "-A"], working_dir, log_fn),
          :ok <-
            commit_if_changed(
-             "chore: initialize iterative build with planning artifacts",
+             "chore: planning artifacts",
              working_dir,
              log_fn
            ),
