@@ -20,6 +20,8 @@ You MUST output exactly these four sections with these exact headings. No other 
 
 ## Branch Name
 
+ALWAYS check the original prompt for any information about using the current git branch or a specific git branch. If specified, use that. Only if the prompt does not contain any information about branch, then generate one.
+
 A single kebab-case branch name. Use a `feature-` prefix for new features, `fix-` for bug fixes, `refactor-` for refactoring. Do NOT use slashes in branch names.
 
 Example: `feature-products-listing-page`
