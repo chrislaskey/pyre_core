@@ -74,7 +74,7 @@ defmodule Pyre.Actions.Shipper do
 
       case Helpers.call_llm(context, model, messages, llm_opts) do
         {:ok, text} ->
-          shipping_plan = parse_shipping_plan(text, params.run_dir)
+          shipping_plan = parse_shipping_plan(text, params.run_dir, params.feature_description)
           working_dir = Map.get(context, :working_dir, ".")
 
           cond do
@@ -112,9 +112,9 @@ defmodule Pyre.Actions.Shipper do
   end
 
   @doc false
-  def parse_shipping_plan(text, run_dir \\ nil) do
+  def parse_shipping_plan(text, run_dir \\ nil, feature_description \\ nil) do
     sections = split_sections(text)
-    feature = feature_slug(run_dir)
+    feature = feature_slug(run_dir, feature_description)
 
     %{
       branch_name:
@@ -238,17 +238,35 @@ defmodule Pyre.Actions.Shipper do
     end
   end
 
-  defp feature_slug(nil), do: "pyre-changes"
+  defp feature_slug(run_dir, feature_description) do
+    dir_slug =
+      case run_dir do
+        nil -> nil
+        _ ->
+          # run_dir is {base}/{feature_slug}/{timestamp}
+          slug = run_dir |> Path.dirname() |> Path.basename()
+          if Regex.match?(~r/^\d{8}_\d{6}$/, slug), do: nil, else: slug
+      end
 
-  defp feature_slug(run_dir) do
-    # run_dir is {base}/{feature_slug}/{timestamp}
-    slug = run_dir |> Path.dirname() |> Path.basename()
+    dir_slug || slugify_description(feature_description) || "pyre-changes"
+  end
 
-    if Regex.match?(~r/^\d{8}_\d{6}$/, slug) do
-      "pyre-changes"
-    else
-      slug
-    end
+  defp slugify_description(nil), do: nil
+  defp slugify_description(""), do: nil
+
+  defp slugify_description(text) do
+    slug =
+      text
+      |> String.split("\n", parts: 2)
+      |> List.first()
+      |> String.downcase()
+      |> String.replace(~r/[^a-z0-9]+/, "-")
+      |> String.replace(~r/-{2,}/, "-")
+      |> String.trim("-")
+      |> String.slice(0, 50)
+      |> String.trim_trailing("-")
+
+    if slug == "", do: nil, else: slug
   end
 
   defp manages_own_tools?(context) do
