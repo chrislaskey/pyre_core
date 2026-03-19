@@ -60,11 +60,19 @@ defmodule Pyre.Actions.Shipper do
           attachments
         )
 
-      working_dir = Map.get(context, :working_dir, ".")
-      tool_opts = Helpers.tool_opts(context)
-      tools = Pyre.Tools.for_role(:shipper, working_dir, tool_opts)
+      messages = [system_msg, user_msg]
 
-      case Helpers.call_llm(context, model, [system_msg, user_msg], tools: tools) do
+      llm_opts =
+        if manages_own_tools?(context) do
+          []
+        else
+          working_dir = Map.get(context, :working_dir, ".")
+          tool_opts = Helpers.tool_opts(context)
+          tools = Pyre.Tools.for_role(:shipper, working_dir, tool_opts)
+          [tools: tools]
+        end
+
+      case Helpers.call_llm(context, model, messages, llm_opts) do
         {:ok, text} ->
           shipping_plan = parse_shipping_plan(text)
           working_dir = Map.get(context, :working_dir, ".")
@@ -226,6 +234,11 @@ defmodule Pyre.Actions.Shipper do
     else
       {:error, {:git_error, "git #{Enum.join(args, " ")}", code, String.trim(output)}}
     end
+  end
+
+  defp manages_own_tools?(context) do
+    llm = Map.get(context, :llm, Pyre.LLM.default())
+    function_exported?(llm, :manages_tool_loop?, 0) and llm.manages_tool_loop?()
   end
 
   defp build_summary(plan, result) do

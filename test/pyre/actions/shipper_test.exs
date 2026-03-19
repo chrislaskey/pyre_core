@@ -123,6 +123,49 @@ defmodule Pyre.Actions.ShipperTest do
     end
   end
 
+  describe "run/2 with CLI backend (manages_tool_loop?)" do
+    test "skips tools and routes to generate instead of chat", %{run_dir: run_dir} do
+      defmodule CLIShipperBackend do
+        @behaviour Pyre.LLM
+
+        def manages_tool_loop?, do: true
+
+        def generate(_, _, _ \\ []) do
+          {:ok, """
+          ## Branch Name
+
+          feature-cli-test-branch
+
+          ## Commit Message
+
+          feat: test cli backend path
+
+          ## PR Title
+
+          Test CLI Backend Path
+
+          ## PR Body
+
+          Verifies that the CLI backend uses generate instead of chat.
+          """}
+        end
+
+        def stream(_, _, _ \\ []), do: generate(nil, nil)
+
+        def chat(_, _, _, _ \\ []) do
+          raise "chat/4 should not be called for shipper with CLI backend"
+        end
+      end
+
+      params = base_params(run_dir)
+      context = %{llm: CLIShipperBackend, streaming: false, dry_run: true}
+
+      assert {:ok, result} = Shipper.run(params, context)
+      assert result.shipping_summary =~ "feature-cli-test-branch"
+      assert result.shipping_summary =~ "Test CLI Backend Path"
+    end
+  end
+
   describe "parse_shipping_plan/1" do
     test "parses all sections from LLM output" do
       plan = Shipper.parse_shipping_plan(@llm_response)
