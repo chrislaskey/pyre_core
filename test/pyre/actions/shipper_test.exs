@@ -201,6 +201,37 @@ defmodule Pyre.Actions.ShipperTest do
       assert plan.branch_name == "20260319_142935"
     end
 
+    test "uses current git branch when not on main" do
+      git_dir =
+        Path.join(System.tmp_dir!(), "pyre_branch_test_#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(git_dir)
+      System.cmd("git", ["init", "-b", "main"], cd: git_dir)
+      File.write!(Path.join(git_dir, ".gitkeep"), "")
+      System.cmd("git", ["add", "."], cd: git_dir)
+      System.cmd("git", ["commit", "-m", "init", "--no-gpg-sign"], cd: git_dir)
+      System.cmd("git", ["checkout", "-b", "nova-admin-ui"], cd: git_dir)
+      on_exit(fn -> File.rm_rf!(git_dir) end)
+
+      plan = Shipper.parse_shipping_plan("No sections", nil, git_dir)
+
+      assert plan.branch_name == "nova-admin-ui"
+    end
+
+    test "falls back to run_dir slug when on main" do
+      git_dir =
+        Path.join(System.tmp_dir!(), "pyre_main_test_#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(git_dir)
+      System.cmd("git", ["init", "-b", "main"], cd: git_dir)
+      on_exit(fn -> File.rm_rf!(git_dir) end)
+
+      run_dir = "/tmp/priv/pyre/features/hello-world/20260319_142935"
+      plan = Shipper.parse_shipping_plan("No sections", run_dir, git_dir)
+
+      assert plan.branch_name == "hello-world"
+    end
+
     test "strips code fences from commit message" do
       text = """
       ## Branch Name

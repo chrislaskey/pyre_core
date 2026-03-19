@@ -74,8 +74,8 @@ defmodule Pyre.Actions.Shipper do
 
       case Helpers.call_llm(context, model, messages, llm_opts) do
         {:ok, text} ->
-          shipping_plan = parse_shipping_plan(text, params.run_dir)
           working_dir = Map.get(context, :working_dir, ".")
+          shipping_plan = parse_shipping_plan(text, params.run_dir, working_dir)
 
           cond do
             Map.get(context, :dry_run, false) ->
@@ -112,9 +112,9 @@ defmodule Pyre.Actions.Shipper do
   end
 
   @doc false
-  def parse_shipping_plan(text, run_dir \\ nil) do
+  def parse_shipping_plan(text, run_dir \\ nil, working_dir \\ nil) do
     sections = split_sections(text)
-    feature = feature_slug(run_dir)
+    feature = default_branch_name(working_dir) || feature_slug(run_dir)
 
     %{
       branch_name:
@@ -235,6 +235,22 @@ defmodule Pyre.Actions.Shipper do
       :ok
     else
       {:error, {:git_error, "git #{Enum.join(args, " ")}", code, String.trim(output)}}
+    end
+  end
+
+  defp default_branch_name(nil), do: nil
+
+  defp default_branch_name(working_dir) do
+    case System.cmd("git", ["rev-parse", "--abbrev-ref", "HEAD"],
+           cd: working_dir,
+           stderr_to_stdout: true
+         ) do
+      {branch, 0} ->
+        branch = String.trim(branch)
+        if branch in ["main", "master"], do: nil, else: branch
+
+      _ ->
+        nil
     end
   end
 
