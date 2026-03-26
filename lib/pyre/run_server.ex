@@ -277,6 +277,9 @@ defmodule Pyre.RunServer do
   end
 
   def handle_cast({:user_action, {:reply, text}}, state) do
+    entry = make_entry(:user_reply, "> #{text}")
+    state = append_entry(state, entry)
+    broadcast_event(state.id, entry)
     GenServer.reply(state.pending_from, {:reply, text})
     state = %{state | waiting_for_input: false, pending_from: nil}
     broadcast_stage_resumed(state.id, state.phase)

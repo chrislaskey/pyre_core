@@ -336,7 +336,7 @@ defmodule Pyre.Flows.IterativeBuild do
         {:ok, result}
 
       :continue ->
-        context.log_fn.("\n--- Finalizing artifact: #{stage_name} ---")
+        context.log_fn.("\n--- Continuing to next stage. Finalizing artifact for current stage first: #{stage_name} ---")
         finalize_artifact(stage_name, model, session_id, result, state, context)
 
       {:reply, user_text} ->
