@@ -1,7 +1,7 @@
-defmodule Pyre.Flows.OvernightRunTest do
+defmodule Pyre.Flows.OvernightFeatureTest do
   use ExUnit.Case, async: false
 
-  alias Pyre.Flows.OvernightRun
+  alias Pyre.Flows.OvernightFeature
 
   setup do
     tmp_dir = Path.join(System.tmp_dir!(), "pyre_flow_test_#{System.unique_integer([:positive])}")
@@ -34,7 +34,7 @@ defmodule Pyre.Flows.OvernightRunTest do
 
     result =
       with_cwd(tmp_dir, fn ->
-        OvernightRun.run("Build a products page",
+        OvernightFeature.run("Build a products page",
           llm: Pyre.LLM.Mock,
           streaming: false,
           project_dir: tmp_dir
@@ -69,7 +69,7 @@ defmodule Pyre.Flows.OvernightRunTest do
 
     result =
       with_cwd(tmp_dir, fn ->
-        OvernightRun.run("Build a products page",
+        OvernightFeature.run("Build a products page",
           llm: Pyre.LLM.Mock,
           streaming: false,
           project_dir: tmp_dir
@@ -102,7 +102,7 @@ defmodule Pyre.Flows.OvernightRunTest do
 
     result =
       with_cwd(tmp_dir, fn ->
-        OvernightRun.run("Build a products page",
+        OvernightFeature.run("Build a products page",
           llm: Pyre.LLM.Mock,
           streaming: false,
           project_dir: tmp_dir
@@ -127,7 +127,7 @@ defmodule Pyre.Flows.OvernightRunTest do
 
     result =
       with_cwd(tmp_dir, fn ->
-        OvernightRun.run("Build a products page",
+        OvernightFeature.run("Build a products page",
           llm: Pyre.LLM.Mock,
           streaming: false,
           fast: true,
@@ -142,7 +142,7 @@ defmodule Pyre.Flows.OvernightRunTest do
   test "dry run skips LLM calls", %{tmp_dir: tmp_dir} do
     result =
       with_cwd(tmp_dir, fn ->
-        OvernightRun.run("Build a products page",
+        OvernightFeature.run("Build a products page",
           llm: Pyre.LLM.Mock,
           streaming: false,
           dry_run: true,
@@ -167,7 +167,7 @@ defmodule Pyre.Flows.OvernightRunTest do
     logs = Agent.start_link(fn -> [] end) |> elem(1)
 
     with_cwd(tmp_dir, fn ->
-      OvernightRun.run("Build a products page",
+      OvernightFeature.run("Build a products page",
         llm: Pyre.LLM.Mock,
         streaming: false,
         verbose: true,
@@ -193,7 +193,7 @@ defmodule Pyre.Flows.OvernightRunTest do
 
     result =
       with_cwd(tmp_dir, fn ->
-        OvernightRun.run("Build a products page",
+        OvernightFeature.run("Build a products page",
           llm: FailingLLM,
           streaming: false,
           project_dir: tmp_dir,
@@ -217,7 +217,7 @@ defmodule Pyre.Flows.OvernightRunTest do
     logs = Agent.start_link(fn -> [] end) |> elem(1)
 
     with_cwd(tmp_dir, fn ->
-      OvernightRun.run("Build a products page",
+      OvernightFeature.run("Build a products page",
         llm: Pyre.LLM.Mock,
         streaming: false,
         project_dir: tmp_dir,
@@ -247,7 +247,7 @@ defmodule Pyre.Flows.OvernightRunTest do
     output = Agent.start_link(fn -> [] end) |> elem(1)
 
     with_cwd(tmp_dir, fn ->
-      OvernightRun.run("Build a products page",
+      OvernightFeature.run("Build a products page",
         llm: Pyre.LLM.Mock,
         streaming: false,
         project_dir: tmp_dir,

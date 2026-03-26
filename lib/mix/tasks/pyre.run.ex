@@ -84,7 +84,7 @@ defmodule Mix.Tasks.Pyre.Run do
       feature: Keyword.get(opts, :feature)
     ]
 
-    case Pyre.Flows.OvernightRun.run(feature_description, flow_opts) do
+    case Pyre.Flows.OvernightFeature.run(feature_description, flow_opts) do
       {:ok, _state} ->
         :ok
 

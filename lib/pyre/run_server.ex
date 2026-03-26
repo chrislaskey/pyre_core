@@ -498,7 +498,7 @@ defmodule Pyre.RunServer do
   defp flow_module(:chat), do: Pyre.Flows.Chat
   defp flow_module(:feature), do: Pyre.Flows.Feature
   defp flow_module(:code_review), do: Pyre.Flows.CodeReview
-  defp flow_module(:overnight_run), do: Pyre.Flows.OvernightRun
+  defp flow_module(:overnight_feature), do: Pyre.Flows.OvernightFeature
 
   defp workflow_stages(:chat) do
     [:generalist]
@@ -512,7 +512,7 @@ defmodule Pyre.RunServer do
     [:reviewing]
   end
 
-  defp workflow_stages(:overnight_run) do
+  defp workflow_stages(:overnight_feature) do
     [:planning, :designing, :implementing, :testing, :reviewing, :shipping]
   end
 

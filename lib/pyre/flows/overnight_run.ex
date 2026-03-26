@@ -1,4 +1,4 @@
-defmodule Pyre.Flows.OvernightRun do
+defmodule Pyre.Flows.OvernightFeature do
   @moduledoc """
   Overnight run multi-agent flow.
 
@@ -12,7 +12,7 @@ defmodule Pyre.Flows.OvernightRun do
 
   ## Usage
 
-      Pyre.Flows.OvernightRun.run("Build a products listing page")
+      Pyre.Flows.OvernightFeature.run("Build a products listing page")
 
   ## Options
 
@@ -49,7 +49,7 @@ defmodule Pyre.Flows.OvernightRun do
   }
 
   @doc """
-  Runs the complete overnight run pipeline.
+  Runs the complete overnight feature pipeline.
   """
   @spec run(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def run(feature_description, opts \\ []) do
