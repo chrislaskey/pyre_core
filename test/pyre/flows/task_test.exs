@@ -78,7 +78,7 @@ defmodule Pyre.Flows.TaskTest do
   end
 
   test "is not interactive by default" do
-    refute function_exported?(Task, :default_interactive_stages, 0)
+    assert Task.default_interactive_stages() == []
   end
 
   test "log_fn receives stage messages", %{tmp_dir: tmp_dir} do
