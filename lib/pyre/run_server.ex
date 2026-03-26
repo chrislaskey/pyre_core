@@ -18,6 +18,9 @@ defmodule Pyre.RunServer do
 
   @type run_id :: String.t()
 
+  # 7 days — long enough for any real session, short enough to bound abandoned runs.
+  @interactive_wait_timeout 604_800_000
+
   # --- Public API ---
 
   @doc """
@@ -84,6 +87,45 @@ defmodule Pyre.RunServer do
   end
 
   @doc """
+  Toggles interactive mode on or off for a specific stage. When on, the flow
+  pauses after that stage completes and waits for user input. Broadcasts the
+  updated set. Only affects stages that haven't started yet.
+  """
+  @spec toggle_interactive_stage(run_id(), atom()) :: :ok | {:error, :not_found}
+  def toggle_interactive_stage(id, stage) do
+    case lookup(id) do
+      {:ok, pid} -> GenServer.call(pid, {:toggle_interactive_stage, stage})
+      error -> error
+    end
+  end
+
+  @doc """
+  Sends a reply to the currently waiting stage. The flow resumes the Claude CLI
+  session with the given text and streams the response back to the web UI.
+  No-ops if the run is not currently waiting for input.
+  """
+  @spec send_reply(run_id(), String.t()) :: :ok | {:error, :not_found}
+  def send_reply(id, text) do
+    case lookup(id) do
+      {:ok, pid} -> GenServer.cast(pid, {:user_action, {:reply, text}})
+      error -> error
+    end
+  end
+
+  @doc """
+  Advances the run past the current waiting stage. If replies were sent during
+  the wait, a finalize call is made before advancing. No-ops if the run is not
+  currently waiting for input.
+  """
+  @spec continue_stage(run_id()) :: :ok | {:error, :not_found}
+  def continue_stage(id) do
+    case lookup(id) do
+      {:ok, pid} -> GenServer.cast(pid, {:user_action, :continue})
+      error -> error
+    end
+  end
+
+  @doc """
   Stops a running pipeline. Kills the flow task and marks the run as stopped.
   Returns `:ok` or `{:error, :not_found}`.
   """
@@ -133,18 +175,25 @@ defmodule Pyre.RunServer do
       |> MapSet.new()
 
     workflow = Keyword.get(opts, :workflow, :iterative_build)
+    llm = Keyword.get(opts, :llm, Pyre.LLM.default())
+    backend = if llm == Pyre.LLM.ClaudeCLI, do: :claude_cli, else: :other
 
     state = %{
       id: id,
       status: :running,
       phase: :planning,
       workflow: workflow,
+      backend: backend,
       feature: Keyword.get(opts, :feature),
       feature_description: feature_description,
       log: [],
       started_at: now,
       completed_at: nil,
       skipped_stages: skipped,
+      interactive_stages: MapSet.new(),
+      waiting_for_input: false,
+      pending_from: nil,
+      session_ids: %{},
       opts: opts
     }
 
@@ -157,6 +206,8 @@ defmodule Pyre.RunServer do
   @impl true
   def handle_continue(:start_flow, state) do
     server = self()
+    stages = workflow_stages(state.workflow)
+    session_ids = Pyre.Session.generate_for_stages(stages)
 
     flow_opts =
       state.opts
@@ -166,6 +217,13 @@ defmodule Pyre.RunServer do
       |> Keyword.put(:skip_check_fn, fn phase ->
         GenServer.call(server, {:stage_skipped?, phase})
       end)
+      |> Keyword.put(:interactive_stage_fn, fn phase ->
+        GenServer.call(server, {:interactive_stage?, phase})
+      end)
+      |> Keyword.put(:await_user_action_fn, fn phase ->
+        GenServer.call(server, {:await_user_action, phase}, @interactive_wait_timeout)
+      end)
+      |> Keyword.put(:session_ids, session_ids)
 
     flow_module = flow_module(state.workflow)
 
@@ -174,7 +232,13 @@ defmodule Pyre.RunServer do
         flow_module.run(state.feature_description, flow_opts)
       end)
 
-    {:noreply, state |> Map.put(:task_ref, task.ref) |> Map.put(:task_pid, task.pid)}
+    state =
+      state
+      |> Map.put(:session_ids, session_ids)
+      |> Map.put(:task_ref, task.ref)
+      |> Map.put(:task_pid, task.pid)
+
+    {:noreply, state}
   end
 
   @impl true
@@ -197,11 +261,28 @@ defmodule Pyre.RunServer do
     {:noreply, state}
   end
 
+  # Guard: ignore user actions when not waiting (e.g. duplicate tab submits)
+  def handle_cast({:user_action, _action}, %{waiting_for_input: false} = state) do
+    {:noreply, state}
+  end
+
+  def handle_cast({:user_action, :continue}, state) do
+    GenServer.reply(state.pending_from, :continue)
+    {:noreply, %{state | waiting_for_input: false, pending_from: nil}}
+  end
+
+  def handle_cast({:user_action, {:reply, text}}, state) do
+    GenServer.reply(state.pending_from, {:reply, text})
+    state = %{state | waiting_for_input: false, pending_from: nil}
+    broadcast_stage_resumed(state.id, state.phase)
+    {:noreply, state}
+  end
+
   @impl true
   def handle_call(:get_state, _from, state) do
     reply =
       state
-      |> Map.drop([:opts, :task_ref, :task_pid])
+      |> Map.drop([:opts, :task_ref, :task_pid, :pending_from])
       |> strip_attachment_content()
 
     {:reply, reply, state}
@@ -232,6 +313,31 @@ defmodule Pyre.RunServer do
     {:reply, MapSet.member?(state.skipped_stages, phase), state}
   end
 
+  def handle_call({:toggle_interactive_stage, stage}, _from, state) do
+    interactive =
+      if MapSet.member?(state.interactive_stages, stage) do
+        MapSet.delete(state.interactive_stages, stage)
+      else
+        MapSet.put(state.interactive_stages, stage)
+      end
+
+    state = %{state | interactive_stages: interactive}
+    broadcast_interactive_stages(state.id, interactive)
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:interactive_stage?, phase}, _from, state) do
+    {:reply, MapSet.member?(state.interactive_stages, phase), state}
+  end
+
+  def handle_call({:await_user_action, phase}, from, state) do
+    state = %{state | waiting_for_input: true, pending_from: from}
+    broadcast_waiting_for_input(state.id, phase)
+    update_registry_meta(state)
+    # Deliberately do not reply yet — reply arrives via send_reply/1 or continue_stage/1
+    {:noreply, state}
+  end
+
   def handle_call(:stop_run, _from, %{status: :running, task_pid: pid, task_ref: ref} = state)
       when not is_nil(pid) do
     Process.demonitor(ref, [:flush])
@@ -246,7 +352,9 @@ defmodule Pyre.RunServer do
         status: :stopped,
         completed_at: DateTime.utc_now(),
         task_ref: nil,
-        task_pid: nil
+        task_pid: nil,
+        waiting_for_input: false,
+        pending_from: nil
       })
 
     broadcast_event(state.id, entry)
@@ -299,7 +407,9 @@ defmodule Pyre.RunServer do
         status: :error,
         completed_at: DateTime.utc_now(),
         task_ref: nil,
-        task_pid: nil
+        task_pid: nil,
+        waiting_for_input: false,
+        pending_from: nil
       })
 
     broadcast_event(state.id, entry)
@@ -369,15 +479,25 @@ defmodule Pyre.RunServer do
   defp flow_module(:iterative_build), do: Pyre.Flows.IterativeBuild
   defp flow_module(_), do: Pyre.Flows.FeatureBuild
 
+  defp workflow_stages(:iterative_build) do
+    [:planning, :designing, :architecting, :branch_setup, :engineering, :reviewing]
+  end
+
+  defp workflow_stages(_) do
+    [:planning, :designing, :implementing, :testing, :reviewing, :shipping]
+  end
+
   defp update_registry_meta(state) do
     meta = %{
       status: state.status,
       phase: state.phase,
       workflow: state.workflow,
+      backend: state.backend,
       feature: state.feature,
       feature_description: state.feature_description,
       started_at: state.started_at,
-      completed_at: state.completed_at
+      completed_at: state.completed_at,
+      waiting_for_input: state.waiting_for_input
     }
 
     Registry.update_value(Pyre.RunRegistry, state.id, fn _old -> meta end)
@@ -413,6 +533,28 @@ defmodule Pyre.RunServer do
         "pyre:runs:#{id}",
         {:pyre_run_skipped_stages, id, skipped_stages}
       )
+    end
+  end
+
+  defp broadcast_interactive_stages(id, interactive_stages) do
+    if ps = pubsub() do
+      Phoenix.PubSub.broadcast(
+        ps,
+        "pyre:runs:#{id}",
+        {:pyre_interactive_stages, id, interactive_stages}
+      )
+    end
+  end
+
+  defp broadcast_waiting_for_input(id, phase) do
+    if ps = pubsub() do
+      Phoenix.PubSub.broadcast(ps, "pyre:runs:#{id}", {:pyre_waiting_for_input, id, phase})
+    end
+  end
+
+  defp broadcast_stage_resumed(id, phase) do
+    if ps = pubsub() do
+      Phoenix.PubSub.broadcast(ps, "pyre:runs:#{id}", {:pyre_stage_resumed, id, phase})
     end
   end
 

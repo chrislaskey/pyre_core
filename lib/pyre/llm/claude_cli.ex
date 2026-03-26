@@ -35,6 +35,11 @@ defmodule Pyre.LLM.ClaudeCLI do
   @default_timeout 600_000
   @default_max_turns 500
 
+  @non_interactive_note "Note: This is a non-interactive session running inside an automated " <>
+                          "pipeline. If you have questions or need clarification before " <>
+                          "proceeding, include them clearly at the end of your response — " <>
+                          "the user can reply by resuming this session."
+
   @impl true
   def manages_tool_loop?, do: true
 
@@ -94,6 +99,16 @@ defmodule Pyre.LLM.ClaudeCLI do
     cli_model = map_model(model)
     {system_prompt, user_prompt} = extract_prompts(messages)
 
+    # Append the non-interactive context note on the opening call of a session so
+    # Claude surfaces questions explicitly rather than silently making assumptions.
+    # Not injected on --resume calls since the session already holds the note.
+    user_prompt =
+      if opts[:session_id] do
+        user_prompt <> "\n\n" <> @non_interactive_note
+      else
+        user_prompt
+      end
+
     Logger.info(
       "[ClaudeCLI] chat/4 model=#{cli_model} streaming=#{streaming?} prompt_len=#{byte_size(user_prompt)}"
     )
@@ -104,8 +119,10 @@ defmodule Pyre.LLM.ClaudeCLI do
           "--permission-mode",
           "bypassPermissions",
           "--allowedTools",
-          "Bash,Read,Edit,Write,Glob,Grep",
-          "--no-session-persistence",
+          "Bash,Read,Edit,Write,Glob,Grep"
+        ] ++
+        session_persistence_args(opts) ++
+        [
           "--max-turns",
           to_string(max_turns)
         ] ++
@@ -398,6 +415,14 @@ defmodule Pyre.LLM.ClaudeCLI do
   end
 
   # --- Helpers ---
+
+  defp session_persistence_args(opts) do
+    cond do
+      session_id = opts[:session_id] -> ["--session-id", session_id]
+      resume_id = opts[:resume] -> ["--resume", resume_id]
+      true -> ["--no-session-persistence"]
+    end
+  end
 
   defp build_add_dir_args([]), do: []
 

@@ -326,6 +326,181 @@ defmodule Pyre.RunServerTest do
     assert {:error, :not_found} = Pyre.RunServer.get_log("deadbeef")
   end
 
+  test "get_state/1 includes interactive_stages and waiting_for_input fields", %{
+    tmp_dir: tmp_dir
+  } do
+    AgentMock.setup([
+      "Req.",
+      "Design.",
+      "Impl.",
+      "Tests.",
+      "APPROVE\n\nGood.",
+      "## Branch Name\n\nfeature/page\n\n## Commit Message\n\nfeat: add page\n\n## PR Title\n\nAdd page\n\n## PR Body\n\nAdds page."
+    ])
+
+    {:ok, id} =
+      Pyre.RunServer.start_run("Build a page",
+        workflow: :feature_build,
+        llm: AgentMock,
+        streaming: false,
+        project_dir: tmp_dir
+      )
+
+    {:ok, state} = Pyre.RunServer.get_state(id)
+    assert %MapSet{} = state.interactive_stages
+    assert MapSet.size(state.interactive_stages) == 0
+    assert state.waiting_for_input == false
+
+    wait_for_status(id, :complete)
+  end
+
+  test "toggle_interactive_stage/2 adds and removes stages", %{tmp_dir: tmp_dir} do
+    AgentMock.setup([
+      "Req.",
+      "Design.",
+      "Impl.",
+      "Tests.",
+      "APPROVE\n\nGood.",
+      "## Branch Name\n\nfeature/page\n\n## Commit Message\n\nfeat: add page\n\n## PR Title\n\nAdd page\n\n## PR Body\n\nAdds page."
+    ])
+
+    {:ok, id} =
+      Pyre.RunServer.start_run("Build a page",
+        workflow: :feature_build,
+        llm: AgentMock,
+        streaming: false,
+        project_dir: tmp_dir
+      )
+
+    {:ok, state} = Pyre.RunServer.get_state(id)
+    assert MapSet.size(state.interactive_stages) == 0
+
+    # Toggle on
+    :ok = Pyre.RunServer.toggle_interactive_stage(id, :designing)
+    {:ok, state} = Pyre.RunServer.get_state(id)
+    assert MapSet.member?(state.interactive_stages, :designing)
+
+    # Toggle off
+    :ok = Pyre.RunServer.toggle_interactive_stage(id, :designing)
+    {:ok, state} = Pyre.RunServer.get_state(id)
+    refute MapSet.member?(state.interactive_stages, :designing)
+
+    wait_for_status(id, :complete)
+  end
+
+  test "send_reply/2 is a no-op when not waiting for input", %{tmp_dir: tmp_dir} do
+    AgentMock.setup([
+      "Req.",
+      "Design.",
+      "Impl.",
+      "Tests.",
+      "APPROVE\n\nGood.",
+      "## Branch Name\n\nfeature/page\n\n## Commit Message\n\nfeat: add page\n\n## PR Title\n\nAdd page\n\n## PR Body\n\nAdds page."
+    ])
+
+    {:ok, id} =
+      Pyre.RunServer.start_run("Build a page",
+        workflow: :feature_build,
+        llm: AgentMock,
+        streaming: false,
+        project_dir: tmp_dir
+      )
+
+    # Should not crash — guard ignores user_action when waiting_for_input == false
+    assert :ok = Pyre.RunServer.send_reply(id, "some reply")
+    assert :ok = Pyre.RunServer.continue_stage(id)
+
+    wait_for_status(id, :complete)
+  end
+
+  test "interactive flow: send_reply unblocks waiting stage then continue advances", %{
+    tmp_dir: tmp_dir,
+    pubsub: pubsub
+  } do
+    # This mock returns responses in sequence. After a reply is sent the flow
+    # calls chat/4 again with --resume, which consumes the next response.
+    AgentMock.setup([
+      # planning (non-interactive)
+      "Requirements doc.",
+      # designing (interactive) — initial call
+      "Design spec.",
+      # designing — resume call with user reply
+      "Updated design spec with error states.",
+      # designing — finalize call
+      "Final design spec.",
+      # remaining stages (non-interactive)
+      "Architecture plan.",
+      "Branch setup done.",
+      "Implementation summary.",
+      "PR reviewed."
+    ])
+
+    Phoenix.PubSub.subscribe(pubsub, "pyre:runs:#{:waiting_test}")
+
+    {:ok, id} =
+      Pyre.RunServer.start_run("Build a page",
+        workflow: :iterative_build,
+        llm: AgentMock,
+        streaming: false,
+        project_dir: tmp_dir
+      )
+
+    # Enable interactive for designing phase
+    :ok = Pyre.RunServer.toggle_interactive_stage(id, :designing)
+
+    Phoenix.PubSub.subscribe(pubsub, "pyre:runs:#{id}")
+
+    # Wait for the flow to reach waiting_for_input
+    assert wait_for_waiting(id), "Expected run to reach waiting_for_input state"
+
+    {:ok, state} = Pyre.RunServer.get_state(id)
+    assert state.waiting_for_input == true
+
+    # Send a reply — flow should resume and come back to waiting
+    :ok = Pyre.RunServer.send_reply(id, "Can you add error states?")
+    assert wait_for_waiting(id), "Expected run to re-enter waiting after reply"
+
+    # Continue — flow should finalize and advance
+    :ok = Pyre.RunServer.continue_stage(id)
+
+    wait_for_status(id, :complete)
+
+    {:ok, final_state} = Pyre.RunServer.get_state(id)
+    assert final_state.status == :complete
+    assert final_state.waiting_for_input == false
+  end
+
+  test "toggle_interactive_stage/2 broadcasts pyre_interactive_stages", %{
+    tmp_dir: tmp_dir,
+    pubsub: pubsub
+  } do
+    AgentMock.setup([
+      "Req.",
+      "Design.",
+      "Impl.",
+      "Tests.",
+      "APPROVE\n\nGood.",
+      "## Branch Name\n\nfeature/page\n\n## Commit Message\n\nfeat: add page\n\n## PR Title\n\nAdd page\n\n## PR Body\n\nAdds page."
+    ])
+
+    {:ok, id} =
+      Pyre.RunServer.start_run("Build a page",
+        workflow: :feature_build,
+        llm: AgentMock,
+        streaming: false,
+        project_dir: tmp_dir
+      )
+
+    Phoenix.PubSub.subscribe(pubsub, "pyre:runs:#{id}")
+
+    :ok = Pyre.RunServer.toggle_interactive_stage(id, :designing)
+
+    assert_receive {:pyre_interactive_stages, ^id, stages}, 1_000
+    assert MapSet.member?(stages, :designing)
+
+    wait_for_status(id, :complete)
+  end
+
   # --- Helpers ---
 
   defp wait_for_status(id, expected_status, timeout \\ 15_000) do
@@ -349,6 +524,36 @@ defmodule Pyre.RunServerTest do
       end
     end)
     |> Enum.find(&(&1 == :done))
+  end
+
+  defp wait_for_waiting(id, timeout \\ 10_000) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+
+    result =
+      Stream.repeatedly(fn ->
+        case Pyre.RunServer.get_state(id) do
+          {:ok, %{waiting_for_input: true}} ->
+            :done
+
+          {:ok, %{status: status}} when status in [:complete, :stopped, :error] ->
+            :not_waiting
+
+          {:ok, _} ->
+            if System.monotonic_time(:millisecond) > deadline do
+              :timeout
+            else
+              Process.sleep(50)
+              :continue
+            end
+
+          _ ->
+            Process.sleep(50)
+            :continue
+        end
+      end)
+      |> Enum.find(fn r -> r != :continue end)
+
+    result == :done
   end
 
   defp flush_messages do

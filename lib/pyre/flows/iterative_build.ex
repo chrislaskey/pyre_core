@@ -87,6 +87,9 @@ defmodule Pyre.Flows.IterativeBuild do
         add_dirs: [feature_dir],
         allowed_commands: Keyword.get(opts, :allowed_commands),
         skip_check_fn: Keyword.get(opts, :skip_check_fn),
+        interactive_stage_fn: Keyword.get(opts, :interactive_stage_fn),
+        await_user_action_fn: Keyword.get(opts, :await_user_action_fn),
+        session_ids: Keyword.get(opts, :session_ids, %{}),
         github: Keyword.get(opts, :github) || github_from_config()
       }
 
@@ -241,6 +244,25 @@ defmodule Pyre.Flows.IterativeBuild do
     pr_reviewer: {:verdict, :review}
   }
 
+  # Maps stage name to {result_field, artifact_base} for the finalize-on-continue call.
+  # nil means the stage has a complex return type (e.g. structured verdict) and finalize
+  # is skipped — the conversation still works, the artifact just isn't rewritten.
+  @stage_artifact_info %{
+    product_manager: {:requirements, "01_requirements"},
+    designer: {:design, "02_design_spec"},
+    software_architect: {:architecture_plan, "03_architecture_plan"},
+    branch_setup: {:branch_setup, "04_branch_setup"},
+    software_engineer: {:implementation_summary, "06_implementation_summary"},
+    pr_reviewer: nil
+  }
+
+  @finalize_prompt """
+  Based on our conversation, please produce the final version of your output.
+  Follow the exact same structure and format as your initial response — keep
+  the same sections and headings — but update the content to reflect everything
+  we discussed and agreed on.\
+  """
+
   @stage_model_tier %{
     product_manager: :standard,
     designer: :standard,
@@ -273,23 +295,101 @@ defmodule Pyre.Flows.IterativeBuild do
         end
 
         result = action_module.run(params, context)
-
         elapsed = System.monotonic_time(:second) - started_at
 
         case result do
-          {:ok, _} ->
+          {:ok, action_result} ->
             context.log_fn.(
               "--- Completed: #{stage_name} (#{format_duration(elapsed)}, #{model_label}) ---"
             )
 
-          {:error, _} ->
+            maybe_interactive_loop(stage_name, model, action_result, state, context)
+
+          {:error, _} = error ->
             context.log_fn.(
               "--- Failed: #{stage_name} (#{format_duration(elapsed)}, #{model_label}) ---"
             )
+
+            error
+        end
+      end
+    end
+  end
+
+  defp maybe_interactive_loop(stage_name, model, result, state, context) do
+    phase = Map.get(@stage_to_phase, stage_name)
+
+    if interactive_stage?(stage_name, context) do
+      session_id = get_in(context, [:session_ids, phase])
+      interactive_loop(stage_name, phase, model, session_id, result, state, context, 0)
+    else
+      {:ok, result}
+    end
+  end
+
+  defp interactive_loop(stage_name, phase, model, session_id, result, state, context, reply_count) do
+    case context.await_user_action_fn.(phase) do
+      :continue when reply_count == 0 ->
+        {:ok, result}
+
+      :continue ->
+        context.log_fn.("\n--- Finalizing artifact: #{stage_name} ---")
+        finalize_artifact(stage_name, model, session_id, result, state, context)
+
+      {:reply, user_text} ->
+        messages = [%{role: :user, content: user_text}]
+
+        opts = [
+          resume: session_id,
+          streaming: context.streaming,
+          output_fn: context.output_fn,
+          working_dir: context.working_dir,
+          add_dirs: Map.get(context, :add_dirs, [])
+        ]
+
+        case context.llm.chat(model, messages, [], opts) do
+          {:ok, _response} ->
+            interactive_loop(
+              stage_name,
+              phase,
+              model,
+              session_id,
+              result,
+              state,
+              context,
+              reply_count + 1
+            )
+
+          {:error, _} = error ->
+            error
+        end
+    end
+  end
+
+  defp finalize_artifact(stage_name, model, session_id, result, state, context) do
+    messages = [%{role: :user, content: @finalize_prompt}]
+
+    opts = [
+      resume: session_id,
+      streaming: context.streaming,
+      output_fn: context.output_fn,
+      working_dir: context.working_dir,
+      add_dirs: Map.get(context, :add_dirs, [])
+    ]
+
+    case context.llm.chat(model, messages, [], opts) do
+      {:ok, finalized_text} ->
+        case Map.get(@stage_artifact_info, stage_name) do
+          nil ->
+            {:ok, result}
+
+          {field, artifact_base} ->
+            :ok = Artifact.write(state.run_dir, artifact_base, finalized_text)
+            {:ok, Map.put(result, field, finalized_text)}
         end
 
-        result
-      end
+      {:error, _} = error ->
+        error
     end
   end
 
@@ -297,6 +397,15 @@ defmodule Pyre.Flows.IterativeBuild do
     phase = Map.get(@stage_to_phase, stage_name)
 
     case Map.get(context, :skip_check_fn) do
+      nil -> false
+      check_fn when is_function(check_fn) -> check_fn.(phase)
+    end
+  end
+
+  defp interactive_stage?(stage_name, context) do
+    phase = Map.get(@stage_to_phase, stage_name)
+
+    case Map.get(context, :interactive_stage_fn) do
       nil -> false
       check_fn when is_function(check_fn) -> check_fn.(phase)
     end
