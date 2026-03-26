@@ -321,7 +321,10 @@ defmodule Pyre.Flows.FeatureBuild do
           context.log_fn.("[verbose] run_dir: #{params.run_dir}")
         end
 
-        result = action_module.run(params, context)
+        phase = Map.get(@stage_to_phase, stage_name)
+        session_id = get_in(context, [:session_ids, phase])
+        action_context = if session_id, do: Map.put(context, :session_id, session_id), else: context
+        result = action_module.run(params, action_context)
         elapsed = System.monotonic_time(:second) - started_at
 
         case result do

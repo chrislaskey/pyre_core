@@ -64,7 +64,7 @@ defmodule Pyre.Actions.Helpers do
   end
 
   defp cli_opts(context) do
-    [
+    opts = [
       streaming: Map.get(context, :streaming, true),
       output_fn: Map.get(context, :output_fn, &IO.write/1),
       working_dir: Map.get(context, :working_dir),
@@ -72,6 +72,11 @@ defmodule Pyre.Actions.Helpers do
       max_turns: Map.get(context, :max_turns, 50),
       add_dirs: Map.get(context, :add_dirs, [])
     ]
+
+    case Map.get(context, :session_id) do
+      nil -> opts
+      session_id -> Keyword.put(opts, :session_id, session_id)
+    end
   end
 
   @doc """
