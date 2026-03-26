@@ -120,10 +120,6 @@ defmodule Pyre.Flows.CodeReview do
     pr_reviewer: :reviewing
   }
 
-  @stage_fallback_field %{
-    pr_reviewer: {:verdict, :review}
-  }
-
   @stage_artifact_info %{
     pr_reviewer: nil
   }
