@@ -27,10 +27,26 @@ defmodule Pyre.LLM.CursorCLI do
       # Or in config:
       config :pyre, :llm_backend, :cursor_cli
 
+  ## Session Persistence (Option E — Hybrid Warm-Up)
+
+  cursor-agent cannot accept a pre-specified session ID on the first call
+  (unlike Claude CLI's `--session-id`). To support interactive stage replies,
+  CursorCLI uses a warm-up strategy:
+
+  1. On the first `chat/4` call with `session_id:`, a warm-up prompt
+     containing the persona/system instructions is sent to create a
+     cursor session. The cursor-generated session ID is extracted from
+     the JSON output and stored in `Pyre.Session.Registry`.
+  2. The real user prompt is then sent via `--resume <cursor_id>`.
+  3. Subsequent `resume:` calls look up the cursor ID from the registry.
+
+  This means the persona is loaded once in the warm-up and carries over
+  to all subsequent calls in the session.
+
   ## Differences from ClaudeCLI
 
-  - No session persistence (`--session-id` / `--resume` are not available).
-    Interactive stage replies are therefore not supported.
+  - Session IDs are backend-generated, not caller-specified. The registry
+    maps Pyre's pre-allocated UUIDs to cursor's real session IDs.
   - System prompt is embedded in the user message (same as ClaudeCLI's
     in-prompt embedding approach) rather than via a dedicated flag.
   - Permission bypass uses `--yolo` instead of `--permission-mode bypassPermissions`.
@@ -104,33 +120,131 @@ defmodule Pyre.LLM.CursorCLI do
     timeout = Keyword.get(opts, :timeout, @default_timeout)
     working_dir = Keyword.get(opts, :working_dir)
     cli_model = map_model(model)
-    {_system_prompt, user_prompt} = extract_prompts(messages)
-
-    # Append non-interactive note (same as ClaudeCLI, but unconditionally since
-    # cursor-agent does not support session resumption).
-    user_prompt = user_prompt <> "\n\n" <> @non_interactive_note
+    {system_prompt, user_prompt} = extract_prompts(messages)
 
     Logger.info(
       "[CursorCLI] chat/4 model=#{cli_model} streaming=#{streaming?} prompt_len=#{byte_size(user_prompt)}"
     )
 
-    args = build_base_args(cli_model) ++ ["--yolo"]
-
     run_opts = if working_dir, do: [cd: working_dir], else: []
 
-    if streaming? do
-      streaming_args =
-        args ++
-          [
-            "--output-format",
-            "stream-json",
-            "-p",
-            user_prompt
-          ]
+    cond do
+      # First call for a stage — warm up the session, then resume with real prompt
+      pyre_session_id = opts[:session_id] ->
+        case ensure_session(pyre_session_id, cli_model, system_prompt, run_opts) do
+          {:ok, cursor_id} ->
+            # Real prompt goes via --resume; persona is already in the session
+            prompt = extract_user_parts(messages) <> "\n\n" <> @non_interactive_note
+            run_with_session(cursor_id, cli_model, prompt, streaming?, output_fn, timeout, run_opts)
 
+          {:error, _} ->
+            Logger.warning("[CursorCLI] session warm-up failed, falling back to stateless call")
+            run_stateless(cli_model, user_prompt <> "\n\n" <> @non_interactive_note, streaming?, output_fn, timeout, run_opts)
+        end
+
+      # Interactive reply — look up cursor session ID from registry
+      pyre_resume_id = opts[:resume] ->
+        case Pyre.Session.Registry.get(pyre_resume_id) do
+          nil ->
+            Logger.warning("[CursorCLI] no session mapping for #{pyre_resume_id}, running stateless")
+            run_stateless(cli_model, user_prompt, streaming?, output_fn, timeout, run_opts)
+
+          cursor_id ->
+            prompt = extract_user_parts(messages)
+            run_with_session(cursor_id, cli_model, prompt, streaming?, output_fn, timeout, run_opts)
+        end
+
+      # No session — stateless call
+      true ->
+        run_stateless(cli_model, user_prompt <> "\n\n" <> @non_interactive_note, streaming?, output_fn, timeout, run_opts)
+    end
+  end
+
+  # --- Session Warm-Up (Option E) ---
+
+  defp ensure_session(pyre_session_id, cli_model, system_prompt, run_opts) do
+    case Pyre.Session.Registry.get(pyre_session_id) do
+      nil ->
+        warmup_prompt = build_warmup_prompt(system_prompt)
+
+        Logger.info("[CursorCLI] warming up session for #{pyre_session_id}")
+
+        args =
+          build_base_args(cli_model) ++
+            ["--yolo", "--output-format", "json", "-p", warmup_prompt]
+
+        case run_cli(args, @default_timeout, run_opts) do
+          {:ok, output} ->
+            case extract_session_id(output) do
+              {:ok, cursor_id} ->
+                Pyre.Session.Registry.put(pyre_session_id, cursor_id)
+                Logger.info("[CursorCLI] session mapped: #{pyre_session_id} -> #{cursor_id}")
+                {:ok, cursor_id}
+
+              :error ->
+                {:error, :no_session_id_in_output}
+            end
+
+          {:error, _} = error ->
+            error
+        end
+
+      cursor_id ->
+        {:ok, cursor_id}
+    end
+  end
+
+  defp build_warmup_prompt(system_prompt) when system_prompt == "" or is_nil(system_prompt) do
+    "You are being initialized for a new task session. Reply with: READY"
+  end
+
+  defp build_warmup_prompt(system_prompt) do
+    """
+    #{system_prompt}
+
+    You are being initialized for a new task session. Acknowledge that you \
+    understand your role and are ready for the task prompt. Reply briefly with: READY\
+    """
+  end
+
+  @doc false
+  def extract_session_id(output) do
+    trimmed = String.trim(output)
+
+    # Try JSON array format first (--output-format json)
+    with {:ok, items} when is_list(items) <- Jason.decode(trimmed) do
+      session_id =
+        Enum.find_value(items, fn
+          %{"session_id" => id} when is_binary(id) and id != "" -> id
+          _ -> nil
+        end)
+
+      if session_id, do: {:ok, session_id}, else: :error
+    else
+      _ ->
+        # Try NDJSON (one JSON object per line)
+        session_id =
+          trimmed
+          |> String.split("\n", trim: true)
+          |> Enum.find_value(fn line ->
+            case Jason.decode(line) do
+              {:ok, %{"session_id" => id}} when is_binary(id) and id != "" -> id
+              _ -> nil
+            end
+          end)
+
+        if session_id, do: {:ok, session_id}, else: :error
+    end
+  end
+
+  defp run_with_session(cursor_id, cli_model, prompt, streaming?, output_fn, timeout, run_opts) do
+    args = build_base_args(cli_model) ++ ["--yolo", "--resume", cursor_id]
+
+    if streaming? do
+      streaming_args = args ++ ["--output-format", "stream-json", "-p", prompt]
       run_cli_streaming(streaming_args, output_fn, timeout, run_opts)
     else
-      batch_args = args ++ ["--output-format", "json", "-p", user_prompt]
+      batch_args = args ++ ["--output-format", "json", "-p", prompt]
 
       case run_cli(batch_args, timeout, run_opts) do
         {:ok, output} -> parse_json_result(output)
@@ -138,6 +252,32 @@ defmodule Pyre.LLM.CursorCLI do
       end
     end
   end
+
+  defp run_stateless(cli_model, prompt, streaming?, output_fn, timeout, run_opts) do
+    args = build_base_args(cli_model) ++ ["--yolo"]
+
+    if streaming? do
+      streaming_args = args ++ ["--output-format", "stream-json", "-p", prompt]
+      run_cli_streaming(streaming_args, output_fn, timeout, run_opts)
+    else
+      batch_args = args ++ ["--output-format", "json", "-p", prompt]
+
+      case run_cli(batch_args, timeout, run_opts) do
+        {:ok, output} -> parse_json_result(output)
+        {:error, _} = error -> error
+      end
+    end
+  end
+
+  @doc false
+  def extract_user_parts(messages) when is_list(messages) do
+    messages
+    |> Enum.filter(fn %{role: role} -> role == :user end)
+    |> Enum.map(fn %{content: content} -> to_text(content) end)
+    |> Enum.join("\n\n")
+  end
+
+  def extract_user_parts(_), do: "Please continue."
 
   # --- Model Mapping ---
 
