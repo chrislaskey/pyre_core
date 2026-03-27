@@ -1,45 +1,54 @@
-defmodule Pyre.LLM.CursorCLI do
+defmodule Pyre.LLM.CodexCLI do
   @moduledoc """
-  LLM backend that delegates to the `cursor-agent` CLI subprocess.
+  LLM backend that delegates to the OpenAI `codex` CLI subprocess.
 
-  Uses `cursor-agent -p` (print mode) for non-interactive LLM calls.
+  Uses `codex exec --json` for non-interactive LLM calls.
   When called with tools via `chat/4`, the CLI runs its own internal
-  agentic loop with built-in tools (Bash, file read/write, grep, etc.),
+  agentic loop with built-in tools (Bash, file read/write, web search, etc.),
   bypassing Pyre's `AgenticLoop` entirely.
 
   ## Prerequisites
 
-  The `cursor-agent` CLI must be installed and on PATH:
+  The `codex` CLI must be installed and on PATH:
 
-      curl https://cursor.com/install -fsSL | bash
-      # Adds ~/.local/bin/cursor-agent; add to PATH if needed.
+      npm install -g @openai/codex
+      # or: brew install --cask codex
 
-  A Cursor subscription is required. Authenticate via one of:
+  Requires a ChatGPT Plus/Pro/Business/Enterprise account or an OpenAI API key.
 
-      cursor-agent login              # browser flow (recommended)
-      export CURSOR_API_KEY=<key>     # API key for headless/CI
+  ## Authentication
+
+      # Non-interactive CI/CD (API key):
+      export CODEX_API_KEY=<your_openai_api_key>
+
+      # Browser login (interactive, one-time):
+      codex login
 
   ## Configuration
 
       # Select as default backend via env var:
-      PYRE_LLM_BACKEND=cursor_cli
+      PYRE_LLM_BACKEND=codex_cli
 
       # Or in config:
-      config :pyre, :llm_backend, :cursor_cli
+      config :pyre, :llm_backend, :codex_cli
 
-  ## Differences from ClaudeCLI
+  ## Key Differences from ClaudeCLI
 
-  - No session persistence (`--session-id` / `--resume` are not available).
-    Interactive stage replies are therefore not supported.
-  - System prompt is embedded in the user message (same as ClaudeCLI's
-    in-prompt embedding approach) rather than via a dedicated flag.
-  - Permission bypass uses `--yolo` instead of `--permission-mode bypassPermissions`.
-  - Multi-model access: cursor-agent can route to Claude, GPT, Gemini, etc.
+  - Command structure: `codex exec --json "prompt"` (not `-p prompt`)
+  - IMPORTANT: `-p` in codex means `--profile`, NOT `--print`
+  - NDJSON schema: text is in `item.completed` events with `type: "agent_message"`
+  - System prompt embedded in user message (no dedicated CLI flag)
+  - Session IDs are auto-generated (can't pre-specify); interactive stage
+    replies are not supported in v1
+  - Built in Rust — fast startup, no Node.js dependency
+  - Auth: `CODEX_API_KEY` (not `ANTHROPIC_API_KEY`)
+  - Permission bypass: `--yolo` and `--full-auto`
 
   ## Cost
 
-  When authenticated via `cursor-agent login` (Cursor subscription),
-  CLI usage is included in the subscription at no per-token cost.
+  When authenticated via `codex login` (ChatGPT Plus/Pro subscription),
+  usage counts against your monthly quota. When using `CODEX_API_KEY`
+  with an OpenAI API key, standard OpenAI per-token rates apply.
   """
 
   @behaviour Pyre.LLM
@@ -64,12 +73,10 @@ defmodule Pyre.LLM.CursorCLI do
     cli_model = map_model(model)
     {_system_prompt, user_prompt} = extract_prompts(messages)
 
-    args =
-      build_base_args(cli_model) ++
-        ["--output-format", "json", "-p", user_prompt]
+    args = ["exec", "--json"] ++ build_model_args(cli_model) ++ [user_prompt]
 
     case run_cli(args, timeout) do
-      {:ok, output} -> parse_json_result(output)
+      {:ok, output} -> parse_ndjson_result(output)
       {:error, _} = error -> error
     end
   end
@@ -83,14 +90,7 @@ defmodule Pyre.LLM.CursorCLI do
     cli_model = map_model(model)
     {_system_prompt, user_prompt} = extract_prompts(messages)
 
-    args =
-      build_base_args(cli_model) ++
-        [
-          "--output-format",
-          "stream-json",
-          "-p",
-          user_prompt
-        ]
+    args = ["exec", "--json"] ++ build_model_args(cli_model) ++ [user_prompt]
 
     run_cli_streaming(args, output_fn, timeout)
   end
@@ -106,34 +106,27 @@ defmodule Pyre.LLM.CursorCLI do
     cli_model = map_model(model)
     {_system_prompt, user_prompt} = extract_prompts(messages)
 
-    # Append non-interactive note (same as ClaudeCLI, but unconditionally since
-    # cursor-agent does not support session resumption).
+    # Append non-interactive note; codex does not support session resumption
+    # from a pre-specified ID, so interactive replies are not supported in v1.
     user_prompt = user_prompt <> "\n\n" <> @non_interactive_note
 
     Logger.info(
-      "[CursorCLI] chat/4 model=#{cli_model} streaming=#{streaming?} prompt_len=#{byte_size(user_prompt)}"
+      "[CodexCLI] chat/4 model=#{cli_model} streaming=#{streaming?} prompt_len=#{byte_size(user_prompt)}"
     )
 
-    args = build_base_args(cli_model) ++ ["--yolo"]
+    # --full-auto: workspace-write sandbox + on-request approvals (low-friction)
+    args =
+      ["exec", "--json", "--full-auto"] ++
+        build_model_args(cli_model) ++
+        build_cd_args(working_dir)
 
-    run_opts = if working_dir, do: [cd: working_dir], else: []
+    run_opts = []
 
     if streaming? do
-      streaming_args =
-        args ++
-          [
-            "--output-format",
-            "stream-json",
-            "-p",
-            user_prompt
-          ]
-
-      run_cli_streaming(streaming_args, output_fn, timeout, run_opts)
+      run_cli_streaming(args ++ [user_prompt], output_fn, timeout, run_opts)
     else
-      batch_args = args ++ ["--output-format", "json", "-p", user_prompt]
-
-      case run_cli(batch_args, timeout, run_opts) do
-        {:ok, output} -> parse_json_result(output)
+      case run_cli(args ++ [user_prompt], timeout, run_opts) do
+        {:ok, output} -> parse_ndjson_result(output)
         {:error, _} = error -> error
       end
     end
@@ -142,12 +135,12 @@ defmodule Pyre.LLM.CursorCLI do
   # --- Model Mapping ---
 
   @doc false
-  def map_model("anthropic:claude-haiku" <> _), do: "claude-haiku-4-5"
-  def map_model("anthropic:claude-sonnet" <> _), do: "claude-sonnet-4-5"
-  def map_model("anthropic:claude-opus" <> _), do: "claude-opus-4"
-  def map_model("haiku"), do: "claude-haiku-4-5"
-  def map_model("sonnet"), do: "claude-sonnet-4-5"
-  def map_model("opus"), do: "claude-opus-4"
+  def map_model("anthropic:claude-haiku" <> _), do: "gpt-4o-mini"
+  def map_model("anthropic:claude-sonnet" <> _), do: "gpt-4o"
+  def map_model("anthropic:claude-opus" <> _), do: "o3"
+  def map_model("haiku"), do: "gpt-4o-mini"
+  def map_model("sonnet"), do: "gpt-4o"
+  def map_model("opus"), do: "o3"
   def map_model(other), do: other
 
   # --- Prompt Extraction ---
@@ -167,8 +160,8 @@ defmodule Pyre.LLM.CursorCLI do
       |> Enum.join("\n\n")
 
     # Embed persona/system instructions directly in the user prompt.
-    # cursor-agent does not have a --append-system-prompt flag; this approach
-    # works reliably since the underlying model follows in-prompt instructions.
+    # codex uses AGENTS.md or --config developer_instructions for system context,
+    # but in-prompt embedding is portable and works reliably.
     user_prompt =
       if system_parts != "" do
         """
@@ -211,8 +204,9 @@ defmodule Pyre.LLM.CursorCLI do
           env = build_env()
           opts = [stderr_to_stdout: true, env: env] ++ run_opts
 
-          # Wrap via shell to redirect stdin from /dev/null.
-          # cursor-agent can block waiting for stdin EOF in headless mode.
+          # Wrap via shell to redirect stdin from /dev/null as a safety measure.
+          # codex exec reads stdin only when "-" is the prompt; this prevents
+          # any accidental blocking.
           {:ok, System.cmd("/bin/sh", ["-c", ~s(exec "$0" "$@" </dev/null), executable | args], opts)}
         rescue
           _ -> {:error, :cli_not_found}
@@ -247,7 +241,6 @@ defmodule Pyre.LLM.CursorCLI do
         {:error, :cli_not_found}
 
       _exe_path ->
-        # Wrap via shell to redirect stdin from /dev/null.
         shell_script = ~s(exec "$0" "$@" </dev/null)
         sh_path = System.find_executable("sh")
 
@@ -289,7 +282,7 @@ defmodule Pyre.LLM.CursorCLI do
 
       {^port, {:exit_status, code}} ->
         Logger.warning(
-          "[CursorCLI] exited with code #{code}, output: #{String.slice(accumulated, 0..500)}"
+          "[CodexCLI] exited with code #{code}, output: #{String.slice(accumulated, 0..500)}"
         )
 
         {:error, {:cli_error, code, accumulated}}
@@ -302,121 +295,82 @@ defmodule Pyre.LLM.CursorCLI do
 
   defp process_stream_line(line, output_fn, accumulated) do
     case Jason.decode(line) do
-      # Cursor CLI: assistant message event
-      # {"type": "assistant", "message": {"content": [{"type": "text", "text": "..."}]}}
-      {:ok, %{"type" => "assistant", "message" => %{"content" => content}}} ->
-        text =
-          content
-          |> Enum.filter(fn part -> Map.get(part, "type") == "text" end)
-          |> Enum.map_join("", fn part -> Map.get(part, "text", "") end)
-
-        if text != "", do: output_fn.(text)
+      # Codex agent message — the primary text output
+      # {"type": "item.completed", "item": {"type": "agent_message", "text": "..."}}
+      {:ok, %{"type" => "item.completed", "item" => %{"type" => "agent_message", "text" => text}}}
+      when is_binary(text) and text != "" ->
+        output_fn.(text)
         accumulated <> text
 
-      # Cursor CLI: result event (no "result" field in stream mode — text accumulated above)
-      # {"type": "result", "subtype": "success", "duration_ms": ...}
-      {:ok, %{"type" => "result", "subtype" => _}} ->
+      # Turn completed — end of turn signal (no text content)
+      {:ok, %{"type" => "turn.completed"}} ->
         accumulated
 
-      # Claude CLI: stream_event wrapper (--include-partial-messages mode)
-      {:ok, %{"type" => "stream_event", "event" => event}} ->
-        process_stream_event(event, output_fn, accumulated)
+      # Error event
+      {:ok, %{"type" => "error", "message" => msg}} when is_binary(msg) ->
+        Logger.warning("[CodexCLI] error event: #{msg}")
+        accumulated
 
-      # Claude CLI: bare SSE events
-      {:ok, %{"type" => "content_block_delta"} = event} ->
-        process_stream_event(event, output_fn, accumulated)
-
-      # Claude CLI: final result with full text
-      {:ok, %{"type" => "result", "result" => text}} when is_binary(text) ->
-        text
+      # Thread started, turn started, item.started, item.updated, etc. — ignored
+      {:ok, %{"type" => _}} ->
+        accumulated
 
       _ ->
         accumulated
     end
   end
 
-  defp process_stream_event(
-         %{"type" => "content_block_delta", "delta" => %{"type" => "text_delta", "text" => text}},
-         output_fn,
-         accumulated
-       )
-       when is_binary(text) and text != "" do
-    output_fn.(text)
-    accumulated <> text
-  end
-
-  defp process_stream_event(_event, _output_fn, accumulated), do: accumulated
-
-  # --- JSON Parsing ---
+  # --- NDJSON Parsing (batch) ---
 
   @doc false
-  def parse_json_result(output) do
+  def parse_ndjson_result(output) do
     trimmed = String.trim(output)
 
-    cond do
-      String.starts_with?(trimmed, "[") ->
-        parse_json_array(trimmed)
+    if trimmed == "" do
+      {:error, {:parse_error, "empty output"}}
+    else
+      result =
+        trimmed
+        |> String.split("\n", trim: true)
+        |> Enum.reduce(nil, fn line, acc ->
+          case Jason.decode(line) do
+            {:ok,
+             %{"type" => "item.completed", "item" => %{"type" => "agent_message", "text" => text}}}
+            when is_binary(text) ->
+              # Accumulate all agent_message items; last one wins
+              (acc || "") <> text
 
-      trimmed != "" ->
-        parse_ndjson(trimmed)
+            _ ->
+              acc
+          end
+        end)
 
-      true ->
-        {:error, {:parse_error, "empty output"}}
+      case result do
+        nil -> {:error, {:parse_error, trimmed}}
+        text -> {:ok, text}
+      end
     end
-  end
-
-  defp parse_json_array(text) do
-    case Jason.decode(text) do
-      {:ok, items} when is_list(items) ->
-        case find_result(items) do
-          nil -> {:error, {:parse_error, text}}
-          result -> {:ok, result}
-        end
-
-      _ ->
-        {:error, {:parse_error, text}}
-    end
-  end
-
-  defp parse_ndjson(text) do
-    result =
-      text
-      |> String.split("\n", trim: true)
-      |> Enum.reduce(nil, fn line, acc ->
-        case Jason.decode(line) do
-          {:ok, %{"type" => "result", "result" => result}} when is_binary(result) -> result
-          _ -> acc
-        end
-      end)
-
-    case result do
-      nil -> {:error, {:parse_error, text}}
-      text -> {:ok, text}
-    end
-  end
-
-  defp find_result(items) do
-    items
-    |> Enum.find_value(fn
-      %{"type" => "result", "result" => text} when is_binary(text) -> text
-      _ -> nil
-    end)
   end
 
   # --- Helpers ---
 
-  defp build_base_args(model) do
+  defp build_model_args(model) when is_binary(model) and model != "" do
     ["--model", model]
   end
 
+  defp build_model_args(_), do: []
+
+  defp build_cd_args(nil), do: []
+  defp build_cd_args(dir), do: ["--cd", dir]
+
   defp build_env do
-    case System.get_env("CURSOR_API_KEY") do
+    case System.get_env("CODEX_API_KEY") do
       nil -> []
-      key -> [{"CURSOR_API_KEY", key}]
+      key -> [{"CODEX_API_KEY", key}]
     end
   end
 
   defp cli_executable do
-    Application.get_env(:pyre, :cursor_cli_executable, "cursor-agent")
+    Application.get_env(:pyre, :codex_cli_executable, "codex")
   end
 end

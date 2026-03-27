@@ -194,6 +194,7 @@ defmodule Pyre.RunServer do
       cond do
         llm == Pyre.LLM.ClaudeCLI -> :claude_cli
         llm == Pyre.LLM.CursorCLI -> :cursor_cli
+        llm == Pyre.LLM.CodexCLI -> :codex_cli
         true -> :other
       end
 

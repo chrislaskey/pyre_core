@@ -12,6 +12,7 @@ if config_env() != :test do
   case System.get_env("PYRE_LLM_BACKEND") do
     "claude_cli" -> config :pyre, :llm_backend, :claude_cli
     "cursor_cli" -> config :pyre, :llm_backend, :cursor_cli
+    "codex_cli" -> config :pyre, :llm_backend, :codex_cli
     "req_llm" -> config :pyre, :llm_backend, :req_llm
     _ -> :ok
   end

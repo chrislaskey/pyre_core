@@ -6,6 +6,7 @@ defmodule Pyre.LLM do
   - `Pyre.LLM.ReqLLM` — default, uses ReqLLM/jido_ai
   - `Pyre.LLM.ClaudeCLI` — Claude CLI subprocess backend
   - `Pyre.LLM.CursorCLI` — Cursor CLI subprocess backend
+  - `Pyre.LLM.CodexCLI` — OpenAI Codex CLI subprocess backend
   - `Pyre.LLM.Mock` — test mock
 
   The `:llm` key in action context selects the implementation module.
@@ -53,11 +54,13 @@ defmodule Pyre.LLM do
   Reads `:pyre, :llm_backend` — defaults to `:req_llm`.
   Set `PYRE_LLM_BACKEND=claude_cli` to use the Claude CLI backend.
   Set `PYRE_LLM_BACKEND=cursor_cli` to use the Cursor CLI backend.
+  Set `PYRE_LLM_BACKEND=codex_cli` to use the OpenAI Codex CLI backend.
   """
   def default do
     case Application.get_env(:pyre, :llm_backend, :req_llm) do
       :claude_cli -> Pyre.LLM.ClaudeCLI
       :cursor_cli -> Pyre.LLM.CursorCLI
+      :codex_cli -> Pyre.LLM.CodexCLI
       :req_llm -> Pyre.LLM.ReqLLM
       module when is_atom(module) -> module
     end
