@@ -18,7 +18,7 @@ Add `pyre` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:pyre, git: "https://github.com/chrislaskey/pyre", branch: "main"}
+    {:pyre, git: "https://github.com/chrislaskey/pyre_core", branch: "main"}
   ]
 end
 ```
