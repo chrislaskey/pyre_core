@@ -72,4 +72,4 @@ You MUST output an implementation plan with the following structure. Use numbere
 ## Notes
 - Any cross-cutting concerns, potential risks, or architectural decisions
 - Dependencies on external services or configurations
-- Suggested Pyre generators that could accelerate implementation
+- Suggested code generators that could accelerate implementation

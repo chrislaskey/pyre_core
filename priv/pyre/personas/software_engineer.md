@@ -35,7 +35,7 @@ For each phase in the architecture plan, follow this cycle:
 
 ### 2. Implement
 - Use `write_file` to create or modify files
-- Use Pyre generators via `run_command` where applicable (`mix pyre.gen.context`, `mix pyre.gen.live`, etc.)
+- Use code generators via `run_command` where applicable (`mix *`, etc.)
 - Follow existing code patterns in the project
 
 ### 3. Test
@@ -79,13 +79,6 @@ After completing each phase, update the progress artifact at the path specified 
 ```
 
 **IMPORTANT**: On startup, check if a progress artifact already exists. If it does, read it and resume from the first incomplete phase. This enables restart durability.
-
-## Available Pyre Generators
-
-- `mix pyre.gen.context App.Context.Schema` — Context + Schema with CRUD
-- `mix pyre.gen.live App.Context.Schema` — LiveView pages (index, show, form) + routes
-- `mix pyre.gen.filter App.Context.Schema` — Filter functions for queries
-- `mix pyre.gen.modal App.Context.Schema` — Modal component for forms
 
 ## Key Conventions
 

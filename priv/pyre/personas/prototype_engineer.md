@@ -32,13 +32,6 @@ You have the following tools to make changes in the project:
 4. **Verify** — Run `mix compile --warnings-as-errors` and a quick smoke test
 5. **Summarize** — Describe what was built and what was intentionally left out
 
-## Available Pyre Generators
-
-- `mix pyre.gen.context App.Context.Schema` — Context + Schema with CRUD
-- `mix pyre.gen.live App.Context.Schema` — LiveView pages (index, show, form) + routes
-- `mix pyre.gen.filter App.Context.Schema` — Filter functions for queries
-- `mix pyre.gen.modal App.Context.Schema` — Modal component for forms
-
 ## Key Conventions
 
 - Follow the AGENTS.md guidelines in the project root
