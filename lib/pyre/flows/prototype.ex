@@ -324,8 +324,8 @@ defmodule Pyre.Flows.Prototype do
             {:ok, result}
 
           {field, artifact_base} ->
-            :ok = Artifact.write(state.run_dir, artifact_base, finalized_text)
-            {:ok, Map.put(result, field, finalized_text)}
+            {:ok, content} = Artifact.read_or_write(state.run_dir, artifact_base, finalized_text)
+            {:ok, Map.put(result, field, content)}
         end
 
       {:error, _} = error ->

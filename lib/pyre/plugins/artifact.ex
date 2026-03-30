@@ -125,6 +125,32 @@ defmodule Pyre.Plugins.Artifact do
   end
 
   @doc """
+  Returns existing file content if present, otherwise writes the fallback.
+
+  CLI backends (e.g., Claude Code) write detailed artifacts directly to disk
+  via their own tools, while the LLM response text returned to Pyre is only
+  a conversational summary. This function preserves the CLI-written file
+  when it exists and falls back to writing the response text for non-CLI
+  backends where no file exists yet.
+
+  Returns `{:ok, content}` with whichever content is authoritative.
+  """
+  @spec read_or_write(String.t(), String.t(), String.t()) :: {:ok, String.t()}
+  def read_or_write(run_dir, filename, fallback_content) do
+    filename = ensure_md_extension(filename)
+    path = Path.join(run_dir, filename)
+
+    case File.read(path) do
+      {:ok, existing} ->
+        {:ok, existing}
+
+      {:error, :enoent} ->
+        :ok = File.write(path, fallback_content)
+        {:ok, fallback_content}
+    end
+  end
+
+  @doc """
   Reads a file from the run directory.
 
   Appends `.md` extension if the filename doesn't already have one.

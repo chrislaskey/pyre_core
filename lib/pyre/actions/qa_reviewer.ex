@@ -60,9 +60,9 @@ defmodule Pyre.Actions.QAReviewer do
 
       case Helpers.call_llm(context, model, [system_msg, user_msg], tools: tools) do
         {:ok, text} ->
-          :ok = Artifact.write(params.run_dir, artifact_name, text)
-          verdict = parse_verdict(text)
-          {:ok, %{verdict: verdict, verdict_text: text}}
+          {:ok, content} = Artifact.read_or_write(params.run_dir, artifact_name, text)
+          verdict = parse_verdict(content)
+          {:ok, %{verdict: verdict, verdict_text: content}}
 
         {:error, _} = error ->
           error

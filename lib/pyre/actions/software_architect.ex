@@ -45,8 +45,8 @@ defmodule Pyre.Actions.SoftwareArchitect do
 
       case Helpers.call_llm(context, model, [system_msg, user_msg], tools: tools) do
         {:ok, text} ->
-          :ok = Artifact.write(params.run_dir, @artifact_base, text)
-          {:ok, %{architecture_plan: text}}
+          {:ok, content} = Artifact.read_or_write(params.run_dir, @artifact_base, text)
+          {:ok, %{architecture_plan: content}}
 
         {:error, _} = error ->
           error

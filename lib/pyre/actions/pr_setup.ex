@@ -51,14 +51,14 @@ defmodule Pyre.Actions.PRSetup do
 
           cond do
             Map.get(context, :dry_run, false) ->
-              :ok = Artifact.write(params.run_dir, @artifact_base, text)
-              {:ok, %{pr_setup: text, branch_name: shipping_plan.branch_name}}
+              {:ok, content} = Artifact.read_or_write(params.run_dir, @artifact_base, text)
+              {:ok, %{pr_setup: content, branch_name: shipping_plan.branch_name}}
 
             not git_repo?(working_dir) ->
               log_fn = Map.get(context, :log_fn, &IO.puts/1)
               log_fn.("Not a git repository — skipping git operations")
-              :ok = Artifact.write(params.run_dir, @artifact_base, text)
-              {:ok, %{pr_setup: text, branch_name: shipping_plan.branch_name}}
+              {:ok, content} = Artifact.read_or_write(params.run_dir, @artifact_base, text)
+              {:ok, %{pr_setup: content, branch_name: shipping_plan.branch_name}}
 
             not github_configured?(context) ->
               {:error,

@@ -49,8 +49,8 @@ defmodule Pyre.Actions.Designer do
 
       case Helpers.call_llm(context, model, [system_msg, user_msg], tools: tools) do
         {:ok, text} ->
-          :ok = Artifact.write(params.run_dir, @artifact_base, text)
-          {:ok, %{design: text}}
+          {:ok, content} = Artifact.read_or_write(params.run_dir, @artifact_base, text)
+          {:ok, %{design: content}}
 
         {:error, _} = error ->
           error

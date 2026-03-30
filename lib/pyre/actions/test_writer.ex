@@ -65,8 +65,8 @@ defmodule Pyre.Actions.TestWriter do
 
       case Helpers.call_llm(context, model, [system_msg, user_msg], tools: tools) do
         {:ok, text} ->
-          :ok = Artifact.write(params.run_dir, artifact_name, text)
-          {:ok, %{tests: text}}
+          {:ok, content} = Artifact.read_or_write(params.run_dir, artifact_name, text)
+          {:ok, %{tests: content}}
 
         {:error, _} = error ->
           error

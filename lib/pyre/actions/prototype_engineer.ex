@@ -43,8 +43,8 @@ defmodule Pyre.Actions.PrototypeEngineer do
 
       case Helpers.call_llm(context, model, [system_msg, user_msg], tools: tools) do
         {:ok, text} ->
-          :ok = Artifact.write(params.run_dir, @artifact_base, text)
-          {:ok, %{prototype_output: text}}
+          {:ok, content} = Artifact.read_or_write(params.run_dir, @artifact_base, text)
+          {:ok, %{prototype_output: content}}
 
         {:error, _} = error ->
           error

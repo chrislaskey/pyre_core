@@ -53,13 +53,13 @@ defmodule Pyre.Actions.PRReviewer do
 
       case Helpers.call_llm(context, model, [system_msg, user_msg], tools: tools) do
         {:ok, text} ->
-          :ok = Artifact.write(params.run_dir, @artifact_base, text)
-          verdict = Pyre.Actions.QAReviewer.parse_verdict(text)
+          {:ok, content} = Artifact.read_or_write(params.run_dir, @artifact_base, text)
+          verdict = Pyre.Actions.QAReviewer.parse_verdict(content)
 
           commit_review_artifact(working_dir, context)
-          maybe_post_review(verdict, text, params, context)
+          maybe_post_review(verdict, content, params, context)
 
-          {:ok, %{review: text, verdict: verdict}}
+          {:ok, %{review: content, verdict: verdict}}
 
         {:error, _} = error ->
           error
