@@ -4,11 +4,14 @@ defmodule Pyre.GitHub.App do
 
   ## Configuration
 
-      config :pyre, :github_app,
-        app_id: "123456",
-        private_key: "-----BEGIN RSA PRIVATE KEY-----\\n...",
-        webhook_secret: "whsec_...",
-        bot_slug: "pyre-code-review"
+      config :pyre, :github_apps, [
+        [
+          app_id: "123456",
+          private_key: "-----BEGIN RSA PRIVATE KEY-----\\n...",
+          webhook_secret: "whsec_...",
+          bot_slug: "pyre-code-review"
+        ]
+      ]
   """
 
   @token_refresh_buffer_seconds 300
@@ -117,6 +120,6 @@ defmodule Pyre.GitHub.App do
   end
 
   defp app_config do
-    Application.get_env(:pyre, :github_app, [])
+    Application.get_env(:pyre, :github_apps, []) |> List.first([])
   end
 end

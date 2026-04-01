@@ -37,11 +37,14 @@ if config_env() != :test do
       ]
   end
 
-  if System.get_env("GITHUB_APP_ID") do
-    config :pyre, :github_app,
-      app_id: System.get_env("GITHUB_APP_ID"),
-      private_key: System.get_env("GITHUB_APP_PRIVATE_KEY"),
-      webhook_secret: System.get_env("GITHUB_WEBHOOK_SECRET"),
-      bot_slug: System.get_env("GITHUB_APP_BOT_SLUG")
+  if System.get_env("PYRE_GITHUB_APP_ID") do
+    config :pyre, :github_apps, [
+      [
+        app_id: System.get_env("PYRE_GITHUB_APP_ID"),
+        private_key: System.get_env("PYRE_GITHUB_APP_PRIVATE_KEY"),
+        webhook_secret: System.get_env("PYRE_GITHUB_WEBHOOK_SECRET"),
+        bot_slug: System.get_env("PYRE_GITHUB_APP_BOT_SLUG")
+      ]
+    ]
   end
 end
