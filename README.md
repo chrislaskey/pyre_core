@@ -95,6 +95,37 @@ Relative paths are resolved against the working directory (`--project-dir`),
 so `../other` with `--project-dir apps/tools` resolves to `apps/other`. The
 working directory itself is always included automatically.
 
+#### Lifecycle hooks
+
+Pyre dispatches lifecycle events (flow start/complete, action start/complete,
+LLM call complete) to a configurable callback module. Create a module that
+`use Pyre.Config` and override the callbacks you need:
+
+```elixir
+defmodule MyApp.PyreConfig do
+  use Pyre.Config
+
+  @impl true
+  def after_flow_complete(%Pyre.Events.FlowCompleted{} = event) do
+    MyApp.Telemetry.emit(:pyre_flow_complete, %{
+      flow: event.flow_module,
+      elapsed_ms: event.elapsed_ms
+    })
+    :ok
+  end
+end
+```
+
+Then register it in your config:
+
+```elixir
+# config/config.exs
+config :pyre, config: MyApp.PyreConfig
+```
+
+Any callback not overridden returns `:ok` by default. Exceptions in callbacks
+are rescued and logged — they never crash the running flow.
+
 #### GitHub integration
 
 ##### Personal access token (Shipper agent)
@@ -325,37 +356,6 @@ defmodule Pyre.Actions.SecurityReviewer do
   end
 end
 ```
-
-#### Lifecycle hooks
-
-Pyre dispatches lifecycle events (flow start/complete, action start/complete,
-LLM call complete) to a configurable callback module. Create a module that
-`use Pyre.Config` and override the callbacks you need:
-
-```elixir
-defmodule MyApp.PyreConfig do
-  use Pyre.Config
-
-  @impl true
-  def after_flow_complete(%Pyre.Events.FlowCompleted{} = event) do
-    MyApp.Telemetry.emit(:pyre_flow_complete, %{
-      flow: event.flow_module,
-      elapsed_ms: event.elapsed_ms
-    })
-    :ok
-  end
-end
-```
-
-Then register it in your config:
-
-```elixir
-# config/config.exs
-config :pyre, config: MyApp.PyreConfig
-```
-
-Any callback not overridden returns `:ok` by default. Exceptions in callbacks
-are rescued and logged — they never crash the running flow.
 
 ### Generators
 
