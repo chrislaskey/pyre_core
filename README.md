@@ -1,10 +1,10 @@
-## Pyre
+## Pyre Core
 
-Multi-agent LLM framework for rapid Phoenix development.
+> For a fully configured standlone Pyre Application see [Pyre App](https://github.com/chrislaskey/pyre_app)
 
-Pyre orchestrates specialized LLM agents — Product Manager, Designer,
-Programmer, Test Writer, Code Reviewer, and Shipper — to implement features
-in your Phoenix application and open GitHub PRs.
+Core multi-agent LLM library for [Pyre](https://github.com/chrislaskey/pyre).
+
+Pyre orchestrates specialized LLM workflows for software development.
 
 Orchestration layer runs on [Jido](https://jido.run/). Each agent is a reusable
 [Jido Action](https://hexdocs.pm/jido_action/Jido.Action.html) with a persona
@@ -40,59 +40,26 @@ This creates:
 
 #### PubSub
 
-If using PyreWeb (the web dashboard), configure your app's PubSub server so
-run processes can broadcast real-time updates to LiveViews:
+Pyre can emit pubsub events when lifecycle events occur. This is optional if
+you're only calling `pyre` on the command line and are not integrating it more
+deeply within your app.
+
+To enable PubSub events update `config/config.exs`:
 
 ```elixir
 # config/config.exs
 config :pyre, :pubsub, MyApp.PubSub
 ```
 
-This should match the PubSub server already started in your application's
-supervision tree. Without this, the CLI (`mix pyre.run`) still works but the
-web dashboard won't show real-time streaming output.
+Replace `MyApp.PubSub` with the PubSub server already started in your application's
+supervision tree.
 
-#### GitHub (Shipper)
+**Note**: This is required if you are using the [PyreWeb](https://github.com/chrislaskey/pyre_web) web interface, since the UI listens for these events.
 
-To enable the Shipper agent (creates branches and opens GitHub PRs), configure
-your repository in `config/runtime.exs`:
-
-```elixir
-# config/runtime.exs
-if System.get_env("GITHUB_REPO_URL") do
-  config :pyre, :github,
-    repositories: [
-      [
-        url: System.get_env("GITHUB_REPO_URL"),
-        token: System.get_env("GITHUB_TOKEN"),
-        base_branch: System.get_env("GITHUB_BASE_BRANCH", "main")
-      ]
-    ]
-end
-```
-
-Set the required environment variables:
-
-```bash
-export GITHUB_TOKEN=ghp_...
-export GITHUB_REPO_URL=https://github.com/myorg/my-app
-```
-
-When using Pyre as a library (e.g. via PyreWeb), the host app sets this config
-in its own `runtime.exs`. The Shipper automatically picks up the first
-configured repository. To target a specific repo at runtime, pass the
-`:github` option:
-
-```elixir
-Pyre.Flows.FeatureBuild.run("Build a feature",
-  github: %{owner: "acme", repo: "app", token: token, base_branch: "main"}
-)
-```
-
-#### Allowed Paths (monorepos)
+#### Allowed Paths
 
 By default, agent file tools (read, write, list directory) are sandboxed to
-the working directory. In monorepos where agents need access to sibling apps
+the working directory. If you need access to sibling apps
 or shared libraries, you can allow additional directories.
 
 **Environment variable** (comma-separated):
@@ -128,12 +95,53 @@ Relative paths are resolved against the working directory (`--project-dir`),
 so `../other` with `--project-dir apps/tools` resolves to `apps/other`. The
 working directory itself is always included automatically.
 
+#### GitHub integration
+
+To enable the Shipper agent (creates branches and opens GitHub PRs), configure
+your repository in `config/runtime.exs`:
+
+```elixir
+# config/runtime.exs
+if System.get_env("PYRE_GITHUB_REPO_URL") do
+  config :pyre, :github,
+    repositories: [
+      [
+        url: System.get_env("PYRE_GITHUB_REPO_URL"),
+        token: System.get_env("PYRE_GITHUB_TOKEN"),
+        base_branch: System.get_env("PYRE_GITHUB_BASE_BRANCH", "main")
+      ],
+      # [
+      #   url: System.get_env("ADDITIONAL_GITHUB_REPO_URL"),
+      #   token: System.get_env("ADDITIONAL_GITHUB_TOKEN"),
+      #   base_branch: System.get_env("ADDITIONAL_GITHUB_BASE_BRANCH", "main")
+      # ]
+    ]
+end
+```
+
+Set the required environment variables:
+
+```bash
+export PYRE_GITHUB_TOKEN=ghp_...
+export PYRE_GITHUB_REPO_URL=https://github.com/myorg/my-app
+```
+
+The Shipper automatically picks up the first configured repository. To target a
+specific repo at runtime, pass the `:github` option:
+
+```elixir
+Pyre.Flows.FeatureBuild.run("Build a feature",
+  github: %{owner: "acme", repo: "app", token: token, base_branch: "main"}
+)
+```
+
 #### LLM API Keys
 
-Pyre calls LLM APIs directly (no CLI dependency). Set your API key:
+Pyre calls LLM APIs directly (no CLI dependency). Set at least one API keys:
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
+export OPENAI_API_KEY=sk-...
 ```
 
 Model aliases are configured in `config/config.exs`:
@@ -149,10 +157,6 @@ config :jido_ai,
 
 To use a different provider (e.g., OpenAI), change the model alias strings
 and set the corresponding API key:
-
-```bash
-export OPENAI_API_KEY=sk-...
-```
 
 ```elixir
 config :jido_ai,
