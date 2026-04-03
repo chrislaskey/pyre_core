@@ -85,9 +85,7 @@ defmodule Pyre.Config do
       apply(mod, hook, [event])
     rescue
       e ->
-        Logger.warning(
-          "Pyre.Config hook #{hook} raised: #{Exception.message(e)}"
-        )
+        Logger.warning("Pyre.Config hook #{hook} raised: #{Exception.message(e)}")
     end
 
     :ok

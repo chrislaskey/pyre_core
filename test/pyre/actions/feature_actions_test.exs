@@ -20,7 +20,12 @@ defmodule Pyre.Actions.SoftwareArchitectTest do
       run_dir: run_dir
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
+    context = %{
+      llm: Pyre.LLM.Mock,
+      streaming: false,
+      working_dir: tmp_dir,
+      allowed_paths: [tmp_dir]
+    }
 
     assert {:ok, result} = SoftwareArchitect.run(params, context)
     assert result.architecture_plan =~ "Architecture Plan"
@@ -109,7 +114,10 @@ defmodule Pyre.Actions.SoftwareEngineerTest do
     %{run_dir: run_dir, tmp_dir: tmp_dir}
   end
 
-  test "generates implementation summary and writes artifact", %{run_dir: run_dir, tmp_dir: tmp_dir} do
+  test "generates implementation summary and writes artifact", %{
+    run_dir: run_dir,
+    tmp_dir: tmp_dir
+  } do
     Process.put(:mock_llm_response, "# Implementation Summary\n\nAll phases implemented.")
 
     params = %{
@@ -119,7 +127,12 @@ defmodule Pyre.Actions.SoftwareEngineerTest do
       run_dir: run_dir
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
+    context = %{
+      llm: Pyre.LLM.Mock,
+      streaming: false,
+      working_dir: tmp_dir,
+      allowed_paths: [tmp_dir]
+    }
 
     assert {:ok, result} = SoftwareEngineer.run(params, context)
     assert result.implementation_summary =~ "Implementation Summary"
@@ -152,7 +165,13 @@ defmodule Pyre.Actions.PRReviewerTest do
       run_dir: run_dir
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false, log_fn: fn _ -> :ok end, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
+    context = %{
+      llm: Pyre.LLM.Mock,
+      streaming: false,
+      log_fn: fn _ -> :ok end,
+      working_dir: tmp_dir,
+      allowed_paths: [tmp_dir]
+    }
 
     assert {:ok, result} = PRReviewer.run(params, context)
     assert result.verdict == :approve
@@ -170,7 +189,13 @@ defmodule Pyre.Actions.PRReviewerTest do
       run_dir: run_dir
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false, log_fn: fn _ -> :ok end, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
+    context = %{
+      llm: Pyre.LLM.Mock,
+      streaming: false,
+      log_fn: fn _ -> :ok end,
+      working_dir: tmp_dir,
+      allowed_paths: [tmp_dir]
+    }
 
     assert {:ok, result} = PRReviewer.run(params, context)
     assert result.verdict == :reject

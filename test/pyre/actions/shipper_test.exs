@@ -52,7 +52,14 @@ defmodule Pyre.Actions.ShipperTest do
       Process.put(:mock_llm_response, @llm_response)
 
       params = base_params(run_dir)
-      context = %{llm: Pyre.LLM.Mock, streaming: false, dry_run: true, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
+
+      context = %{
+        llm: Pyre.LLM.Mock,
+        streaming: false,
+        dry_run: true,
+        working_dir: tmp_dir,
+        allowed_paths: [tmp_dir]
+      }
 
       assert {:ok, result} = Shipper.run(params, context)
       assert result.shipping_summary =~ "Branch Name"
@@ -91,7 +98,14 @@ defmodule Pyre.Actions.ShipperTest do
       end
 
       params = base_params(run_dir)
-      context = %{llm: FailingShipperLLM, streaming: false, dry_run: true, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
+
+      context = %{
+        llm: FailingShipperLLM,
+        streaming: false,
+        dry_run: true,
+        working_dir: tmp_dir,
+        allowed_paths: [tmp_dir]
+      }
 
       assert {:error, :api_error} = Shipper.run(params, context)
     end
@@ -126,30 +140,34 @@ defmodule Pyre.Actions.ShipperTest do
   end
 
   describe "run/2 with CLI backend (manages_tool_loop?)" do
-    test "skips tools and routes to generate instead of chat", %{run_dir: run_dir, tmp_dir: tmp_dir} do
+    test "skips tools and routes to generate instead of chat", %{
+      run_dir: run_dir,
+      tmp_dir: tmp_dir
+    } do
       defmodule CLIShipperBackend do
         @behaviour Pyre.LLM
 
         def manages_tool_loop?, do: true
 
         def generate(_, _, _ \\ []) do
-          {:ok, """
-          ## Branch Name
+          {:ok,
+           """
+           ## Branch Name
 
-          feature-cli-test-branch
+           feature-cli-test-branch
 
-          ## Commit Message
+           ## Commit Message
 
-          feat: test cli backend path
+           feat: test cli backend path
 
-          ## PR Title
+           ## PR Title
 
-          Test CLI Backend Path
+           Test CLI Backend Path
 
-          ## PR Body
+           ## PR Body
 
-          Verifies that the CLI backend uses generate instead of chat.
-          """}
+           Verifies that the CLI backend uses generate instead of chat.
+           """}
         end
 
         def stream(_, _, _ \\ []), do: generate(nil, nil)
@@ -160,7 +178,14 @@ defmodule Pyre.Actions.ShipperTest do
       end
 
       params = base_params(run_dir)
-      context = %{llm: CLIShipperBackend, streaming: false, dry_run: true, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
+
+      context = %{
+        llm: CLIShipperBackend,
+        streaming: false,
+        dry_run: true,
+        working_dir: tmp_dir,
+        allowed_paths: [tmp_dir]
+      }
 
       assert {:ok, result} = Shipper.run(params, context)
       assert result.shipping_summary =~ "feature-cli-test-branch"

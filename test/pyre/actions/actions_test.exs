@@ -16,7 +16,13 @@ defmodule Pyre.Actions.ProductManagerTest do
     Process.put(:mock_llm_response, "# Requirements\n\nProducts page requirements.")
 
     params = %{feature_description: "Build a products page", run_dir: run_dir}
-    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
+
+    context = %{
+      llm: Pyre.LLM.Mock,
+      streaming: false,
+      working_dir: tmp_dir,
+      allowed_paths: [tmp_dir]
+    }
 
     assert {:ok, result} = ProductManager.run(params, context)
     assert result.requirements =~ "Requirements"
@@ -62,7 +68,12 @@ defmodule Pyre.Actions.DesignerTest do
       run_dir: run_dir
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
+    context = %{
+      llm: Pyre.LLM.Mock,
+      streaming: false,
+      working_dir: tmp_dir,
+      allowed_paths: [tmp_dir]
+    }
 
     assert {:ok, result} = Designer.run(params, context)
     assert result.design =~ "Design Spec"
@@ -95,7 +106,12 @@ defmodule Pyre.Actions.ProgrammerTest do
       run_dir: run_dir
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
+    context = %{
+      llm: Pyre.LLM.Mock,
+      streaming: false,
+      working_dir: tmp_dir,
+      allowed_paths: [tmp_dir]
+    }
 
     assert {:ok, result} = Programmer.run(params, context)
     assert result.implementation =~ "Implementation"
@@ -114,7 +130,12 @@ defmodule Pyre.Actions.ProgrammerTest do
       previous_verdict: "REJECT\n\nNeeds fixes."
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
+    context = %{
+      llm: Pyre.LLM.Mock,
+      streaming: false,
+      working_dir: tmp_dir,
+      allowed_paths: [tmp_dir]
+    }
 
     assert {:ok, _result} = Programmer.run(params, context)
     assert {:ok, _} = Artifact.read(run_dir, "03_implementation_summary_v2")
@@ -146,7 +167,12 @@ defmodule Pyre.Actions.TestWriterTest do
       run_dir: run_dir
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
+    context = %{
+      llm: Pyre.LLM.Mock,
+      streaming: false,
+      working_dir: tmp_dir,
+      allowed_paths: [tmp_dir]
+    }
 
     assert {:ok, result} = TestWriter.run(params, context)
     assert result.tests =~ "Test Summary"
@@ -166,7 +192,12 @@ defmodule Pyre.Actions.TestWriterTest do
       previous_verdict: "REJECT\n\nNeed more tests."
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
+    context = %{
+      llm: Pyre.LLM.Mock,
+      streaming: false,
+      working_dir: tmp_dir,
+      allowed_paths: [tmp_dir]
+    }
 
     assert {:ok, _result} = TestWriter.run(params, context)
     assert {:ok, _} = Artifact.read(run_dir, "04_test_summary_v2")
@@ -199,7 +230,12 @@ defmodule Pyre.Actions.QAReviewerTest do
       run_dir: run_dir
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
+    context = %{
+      llm: Pyre.LLM.Mock,
+      streaming: false,
+      working_dir: tmp_dir,
+      allowed_paths: [tmp_dir]
+    }
 
     assert {:ok, result} = QAReviewer.run(params, context)
     assert result.verdict == :approve
@@ -219,7 +255,12 @@ defmodule Pyre.Actions.QAReviewerTest do
       run_dir: run_dir
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
+    context = %{
+      llm: Pyre.LLM.Mock,
+      streaming: false,
+      working_dir: tmp_dir,
+      allowed_paths: [tmp_dir]
+    }
 
     assert {:ok, result} = QAReviewer.run(params, context)
     assert result.verdict == :reject
@@ -255,7 +296,12 @@ defmodule Pyre.Actions.QAReviewerTest do
       review_cycle: 2
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
+    context = %{
+      llm: Pyre.LLM.Mock,
+      streaming: false,
+      working_dir: tmp_dir,
+      allowed_paths: [tmp_dir]
+    }
 
     assert {:ok, _result} = QAReviewer.run(params, context)
     assert {:ok, _} = Artifact.read(run_dir, "05_review_verdict_v2")

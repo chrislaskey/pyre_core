@@ -16,7 +16,13 @@ defmodule Pyre.Actions.GeneralistTest do
     Process.put(:mock_llm_response, "# Summary\n\nHere's what I did.")
 
     params = %{feature_description: "Help me debug this issue", run_dir: run_dir}
-    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
+
+    context = %{
+      llm: Pyre.LLM.Mock,
+      streaming: false,
+      working_dir: tmp_dir,
+      allowed_paths: [tmp_dir]
+    }
 
     assert {:ok, result} = Generalist.run(params, context)
     assert result.generalist_output =~ "Summary"

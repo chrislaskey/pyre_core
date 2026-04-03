@@ -201,7 +201,9 @@ defmodule Pyre.Flows.Prototype do
 
         phase = Map.get(@stage_to_phase, stage_name)
         session_id = get_in(context, [:session_ids, phase])
-        action_context = if session_id, do: Map.put(context, :session_id, session_id), else: context
+
+        action_context =
+          if session_id, do: Map.put(context, :session_id, session_id), else: context
 
         action_started_at = System.monotonic_time(:millisecond)
 
@@ -271,7 +273,10 @@ defmodule Pyre.Flows.Prototype do
         {:ok, result}
 
       :continue ->
-        context.log_fn.("\n--- Continuing to next stage. Finalizing artifact for current stage first: #{stage_name} ---")
+        context.log_fn.(
+          "\n--- Continuing to next stage. Finalizing artifact for current stage first: #{stage_name} ---"
+        )
+
         finalize_artifact(stage_name, model, session_id, result, state, context)
 
       {:reply, user_text} ->

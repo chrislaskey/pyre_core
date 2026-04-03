@@ -80,8 +80,13 @@ defmodule Pyre.Actions.PRReviewer do
          {_, 0} <- System.cmd("git", ["push"], cd: working_dir, stderr_to_stdout: true) do
       log_fn.("Committed and pushed review artifacts")
     else
-      false -> :ok
-      {output, code} -> log_fn.("Warning: could not commit review artifacts (exit #{code}: #{String.trim(output)})")
+      false ->
+        :ok
+
+      {output, code} ->
+        log_fn.(
+          "Warning: could not commit review artifacts (exit #{code}: #{String.trim(output)})"
+        )
     end
   end
 

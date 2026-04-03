@@ -188,6 +188,7 @@ defmodule Pyre.RunServer do
             do: flow_mod.default_interactive_stages() |> MapSet.new(),
             else: MapSet.new()
       end
+
     llm = Keyword.get(opts, :llm, Pyre.LLM.default())
 
     backend =

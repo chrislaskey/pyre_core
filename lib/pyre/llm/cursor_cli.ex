@@ -135,28 +135,64 @@ defmodule Pyre.LLM.CursorCLI do
           {:ok, cursor_id} ->
             # Real prompt goes via --resume; persona is already in the session
             prompt = extract_user_parts(messages) <> "\n\n" <> @non_interactive_note
-            run_with_session(cursor_id, cli_model, prompt, streaming?, output_fn, timeout, run_opts)
+
+            run_with_session(
+              cursor_id,
+              cli_model,
+              prompt,
+              streaming?,
+              output_fn,
+              timeout,
+              run_opts
+            )
 
           {:error, _} ->
             Logger.warning("[CursorCLI] session warm-up failed, falling back to stateless call")
-            run_stateless(cli_model, user_prompt <> "\n\n" <> @non_interactive_note, streaming?, output_fn, timeout, run_opts)
+
+            run_stateless(
+              cli_model,
+              user_prompt <> "\n\n" <> @non_interactive_note,
+              streaming?,
+              output_fn,
+              timeout,
+              run_opts
+            )
         end
 
       # Interactive reply — look up cursor session ID from registry
       pyre_resume_id = opts[:resume] ->
         case Pyre.Session.Registry.get(pyre_resume_id) do
           nil ->
-            Logger.warning("[CursorCLI] no session mapping for #{pyre_resume_id}, running stateless")
+            Logger.warning(
+              "[CursorCLI] no session mapping for #{pyre_resume_id}, running stateless"
+            )
+
             run_stateless(cli_model, user_prompt, streaming?, output_fn, timeout, run_opts)
 
           cursor_id ->
             prompt = extract_user_parts(messages)
-            run_with_session(cursor_id, cli_model, prompt, streaming?, output_fn, timeout, run_opts)
+
+            run_with_session(
+              cursor_id,
+              cli_model,
+              prompt,
+              streaming?,
+              output_fn,
+              timeout,
+              run_opts
+            )
         end
 
       # No session — stateless call
       true ->
-        run_stateless(cli_model, user_prompt <> "\n\n" <> @non_interactive_note, streaming?, output_fn, timeout, run_opts)
+        run_stateless(
+          cli_model,
+          user_prompt <> "\n\n" <> @non_interactive_note,
+          streaming?,
+          output_fn,
+          timeout,
+          run_opts
+        )
     end
   end
 
@@ -353,7 +389,8 @@ defmodule Pyre.LLM.CursorCLI do
 
           # Wrap via shell to redirect stdin from /dev/null.
           # cursor-agent can block waiting for stdin EOF in headless mode.
-          {:ok, System.cmd("/bin/sh", ["-c", ~s(exec "$0" "$@" </dev/null), executable | args], opts)}
+          {:ok,
+           System.cmd("/bin/sh", ["-c", ~s(exec "$0" "$@" </dev/null), executable | args], opts)}
         rescue
           _ -> {:error, :cli_not_found}
         end
@@ -406,7 +443,14 @@ defmodule Pyre.LLM.CursorCLI do
         sh_args = ["-c", shell_script, executable | args]
 
         port_opts =
-          [:binary, :exit_status, :use_stdio, :stderr_to_stdout, {:line, 65_536}, {:args, sh_args}] ++
+          [
+            :binary,
+            :exit_status,
+            :use_stdio,
+            :stderr_to_stdout,
+            {:line, 65_536},
+            {:args, sh_args}
+          ] ++
             cd_opts ++ env_opts
 
         port = Port.open({:spawn_executable, sh_path}, port_opts)

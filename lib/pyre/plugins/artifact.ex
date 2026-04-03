@@ -25,7 +25,9 @@ defmodule Pyre.Plugins.Artifact do
 
     slug =
       case feature_name do
-        nil -> timestamp
+        nil ->
+          timestamp
+
         name when is_binary(name) ->
           slugified = slugify(name)
           if slugified == "", do: timestamp, else: slugified

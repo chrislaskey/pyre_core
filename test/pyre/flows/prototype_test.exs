@@ -4,7 +4,9 @@ defmodule Pyre.Flows.PrototypeTest do
   alias Pyre.Flows.Prototype
 
   setup do
-    tmp_dir = Path.join(System.tmp_dir!(), "pyre_proto_test_#{System.unique_integer([:positive])}")
+    tmp_dir =
+      Path.join(System.tmp_dir!(), "pyre_proto_test_#{System.unique_integer([:positive])}")
+
     features_dir = Path.join(tmp_dir, "priv/pyre/features")
     File.mkdir_p!(features_dir)
     on_exit(fn -> File.rm_rf!(tmp_dir) end)

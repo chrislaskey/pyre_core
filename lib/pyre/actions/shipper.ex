@@ -117,8 +117,7 @@ defmodule Pyre.Actions.Shipper do
     feature = default_branch_name(working_dir) || feature_slug(run_dir)
 
     %{
-      branch_name:
-        sections |> Map.get("Branch Name", feature) |> String.trim(),
+      branch_name: sections |> Map.get("Branch Name", feature) |> String.trim(),
       commit_message:
         sections
         |> Map.get("Commit Message", "feat: implement #{feature}")

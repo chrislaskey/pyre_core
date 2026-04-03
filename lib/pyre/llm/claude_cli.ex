@@ -227,7 +227,8 @@ defmodule Pyre.LLM.ClaudeCLI do
           # Wrap via shell to redirect stdin from /dev/null.
           # The CLI blocks waiting for stdin EOF otherwise.
           # Using "$0"/"$@" passes args as positional params (no shell escaping needed).
-          {:ok, System.cmd("/bin/sh", ["-c", ~s(exec "$0" "$@" </dev/null), executable | args], opts)}
+          {:ok,
+           System.cmd("/bin/sh", ["-c", ~s(exec "$0" "$@" </dev/null), executable | args], opts)}
         rescue
           _ -> {:error, :cli_not_found}
         end
@@ -281,7 +282,14 @@ defmodule Pyre.LLM.ClaudeCLI do
         sh_args = ["-c", shell_script, executable | args]
 
         port_opts =
-          [:binary, :exit_status, :use_stdio, :stderr_to_stdout, {:line, 65_536}, {:args, sh_args}] ++
+          [
+            :binary,
+            :exit_status,
+            :use_stdio,
+            :stderr_to_stdout,
+            {:line, 65_536},
+            {:args, sh_args}
+          ] ++
             cd_opts ++ env_opts
 
         port = Port.open({:spawn_executable, sh_path}, port_opts)
