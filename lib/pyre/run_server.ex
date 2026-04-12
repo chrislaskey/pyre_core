@@ -27,10 +27,19 @@ defmodule Pyre.RunServer do
   Starts a new run under `Pyre.RunSupervisor`.
 
   Returns `{:ok, run_id}` where `run_id` is an 8-char hex string.
+
+  ## Options
+
+  All options are passed through to the run GenServer. Additionally:
+
+    * `:id` - pre-generated run ID. If not provided, one is generated
+      automatically via `generate_id/0`. Useful when the caller needs
+      to know the ID before the run starts (e.g., for database records).
+
   """
   @spec start_run(String.t(), keyword()) :: {:ok, run_id()}
   def start_run(feature_description, opts \\ []) do
-    id = generate_id()
+    id = Keyword.get(opts, :id) || generate_id()
 
     {:ok, _pid} =
       DynamicSupervisor.start_child(
@@ -444,7 +453,10 @@ defmodule Pyre.RunServer do
 
   # --- Private helpers ---
 
-  defp generate_id do
+  @doc """
+  Generates a unique 8-character hex run ID.
+  """
+  def generate_id do
     :crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)
   end
 
